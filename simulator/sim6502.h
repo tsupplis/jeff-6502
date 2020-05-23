@@ -3,7 +3,8 @@
  */
 
 #include <cstdint>
-#include <string>
+#include <list>
+#include <queue>
 
 using namespace std;
 
@@ -11,10 +12,13 @@ class Sim6502 {
 
 public:
 
+    // CPU types. Currently only MOS6502 is supported.
     enum CpuType { MOS6502, Rockwell65C02, WDC65C02, WDC65816 };
+
+    // Perpheral types. Currently only M6850 is supported.
     enum PeripheralType { MC6850, MC6820 };
 
-    // Status register bits
+    // Processor status register bits
     const uint8_t S_BIT = 0x80;
     const uint8_t V_BIT = 0x40;
     const uint8_t X_BIT = 0x20;
@@ -34,12 +38,13 @@ public:
     void setCpuType(const CpuType &type);
 
     // TODO: Support multiple RAM/ROM ranges? Set arbitrary addresses or pages as ROM or ROM?
-    void ramRange(uint16_t &start, uint16_t &end);
+    void ramRange(uint16_t &start, uint16_t &end) const;
     void setRamRange(uint16_t start, uint16_t end);
-    void romRange(uint16_t &start, uint16_t &end);
-    void setRomRange(uint16_t start, uint16_t end);
+    void romRange(uint16_t &start, uint16_t &end) const;
+    void setRomRange1(uint16_t start, uint16_t end);
+    void setRomRange2(uint16_t start, uint16_t end);
 
-    void videoRange(uint16_t &start, uint16_t &end);
+    void videoRange(uint16_t &start, uint16_t &end) const;
     void setVideoRange(uint16_t start, uint16_t end);
     void setPeripheral(PeripheralType type, uint16_t start);
     void setKeyboard(uint16_t start);
@@ -57,17 +62,17 @@ public:
     void step();
 
     // Set/get registers (A, X, Y, SR, SP, PC)
-    uint8_t aReg();
+    uint8_t aReg() const;
     void setAReg(uint8_t val);
-    uint8_t xReg();
+    uint8_t xReg() const;
     void setXReg(uint8_t val);
-    uint8_t yReg();
+    uint8_t yReg() const;
     void setYReg(uint8_t val);
-    uint8_t sr();
-    void setSR(uint8_t val);
-    uint8_t sp();
+    uint8_t pReg() const;
+    void setPReg(uint8_t val);
+    uint8_t sp() const;
     void setSP(uint8_t val);
-    uint16_t pc();
+    uint16_t pc() const;
     void setPC(uint16_t val);
 
     // Write to memory. Ignores writes to ROM or unused memory.
@@ -93,14 +98,14 @@ public:
 
     // Read from keyboard.
     uint8_t readKeyboard(uint16_t address);
-    
+
     // Return if an address is RAM, ROM, peripheral, video, keyboard, or unused.
-    bool isRam(uint16_t address);
-    bool isRom(uint16_t address);
-    bool isPeripheral(uint16_t address);
-    bool isVideo(uint16_t address);
-    bool isKeyboard(uint16_t address);
-    bool isUnused(uint16_t address);
+    bool isRam(uint16_t address) const;
+    bool isRom(uint16_t address) const;
+    bool isPeripheral(uint16_t address) const;
+    bool isVideo(uint16_t address) const;
+    bool isKeyboard(uint16_t address) const;
+    bool isUnused(uint16_t address) const;
 
     // Load memory from file.
     bool loadMemory(string filename, uint16_t startAddress=0);
@@ -112,7 +117,7 @@ public:
     void setMemory(uint16_t startAddress, uint16_t endAddress, uint8_t byte=0);
 
     // Dump memory to standard output
-    void dumpMemory(uint16_t startAddress, uint16_t endAddress);
+    void dumpMemory(uint16_t startAddress, uint16_t endAddress, bool showAscii=true);
 
     // Dump registers to standard output
     void dumpRegisters();
@@ -120,10 +125,17 @@ public:
     // Dump video memory
     void dumpVideo();
 
-    // TODO: Set/get breakpoint?
+    // Simulate pressing a keyboard key
+    void pressKey(char key);
+
+    // Breakpoint support
+    void setBreakpoint(uint16_t address);
+    void clearBreakpoint(uint16_t address);
+    std::list<uint16_t> getBreakpoints() const;
+
     // TODO: Breakpoint hit (callback?).
     // TODO: Keyboard/peripheral input (callback?).
-    // TODO Illegal instruction (callback?).
+    // TODO: Illegal instruction (callback?).
 
   protected:
 
@@ -132,8 +144,11 @@ public:
     uint16_t m_ramStart = 0; // RAM start
     uint16_t m_ramEnd = 0; // RAM end
 
-    uint16_t m_romStart = 0; // ROM start
-    uint16_t m_romEnd = 0; // ROM end
+    uint16_t m_romStart1 = 0; // ROM start
+    uint16_t m_romEnd1 = 0; // ROM end
+
+    uint16_t m_romStart2 = 0; // ROM start
+    uint16_t m_romEnd2 = 0; // ROM end
 
     uint16_t m_videoStart = 0; // Video memory start
     uint16_t m_videoEnd = 0; // Video memory end
@@ -144,13 +159,26 @@ public:
 
     uint16_t m_keyboardStart = 0; // Keyboard base address
     uint8_t m_keyboardRowRegister = 0;
+    uint8_t m_desiredRow = 0;
+    uint8_t m_columnData = 0;
+    bool m_shift = false;
+    bool m_sendingCharacter = false;
+    char m_keyboardCharacter;
+    int m_tries = 0;
 
     uint8_t m_regA = 0; // Registers
     uint8_t m_regX = 0;
     uint8_t m_regY = 0;
-    uint8_t m_regSR = X_BIT;
+    uint8_t m_regP = X_BIT;
     uint8_t m_regSP = 0;
     uint16_t m_regPC = 0;
 
     uint8_t m_memory[0x10000]{0}; // Memory (Used for RAM, ROM, and video)
+
+    uint8_t m_row[128]{0}; // Keyboard row lookup table by key
+    uint8_t m_col[128]{0}; // Keyboard column lookup table by key
+    bool m_shifted[128]{false}; // Flags keys that need to be shifted
+
+    // TODO: Might want to use set rather than list
+    std::list<uint16_t> m_breakpoints; // Breakpoint list
 };
