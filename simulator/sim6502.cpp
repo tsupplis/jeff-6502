@@ -13,21 +13,38 @@ using namespace std;
 Sim6502::Sim6502()
 {
     m_row['1'] = m_row['2'] = m_row['3'] = m_row['4'] = m_row['5'] = m_row['6'] = m_row['7'] = 127;
-    m_row['8'] = m_row['9'] = m_row['0'] = m_row[':'] = m_row['-'] = m_row[0x7f]  = 191;
-    m_row['.'] = m_row['L'] = m_row['O'] = m_row['\n']= m_row['\r']= 223;
+    m_row['8'] = m_row['9'] = m_row['0'] = m_row[':'] = m_row['-'] = m_row[0x7f]             = 191;
+    m_row['.'] = m_row['L'] = m_row['O'] = m_row['\n']= m_row['\r']                          = 223;
     m_row['W'] = m_row['E'] = m_row['R'] = m_row['T'] = m_row['Y'] = m_row['U'] = m_row['I'] = 239;
     m_row['S'] = m_row['D'] = m_row['F'] = m_row['G'] = m_row['H'] = m_row['J'] = m_row['K'] = 247;
     m_row['X'] = m_row['C'] = m_row['V'] = m_row['B'] = m_row['N'] = m_row['M'] = m_row[','] = 251;
     m_row['Q'] = m_row['A'] = m_row['Z'] = m_row[' '] = m_row['/'] = m_row[';'] = m_row['P'] = 253;
     m_row[0x1b] = 254;
 
+    // Lowercase versions of above
+                 m_row['l'] = m_row['o'] = 223;
+    m_row['w'] = m_row['e'] = m_row['r'] = m_row['t'] = m_row['y'] = m_row['u'] = m_row['i'] = 239;
+    m_row['s'] = m_row['d'] = m_row['f'] = m_row['g'] = m_row['h'] = m_row['j'] = m_row['k'] = 247;
+    m_row['x'] = m_row['c'] = m_row['v'] = m_row['b'] = m_row['n'] = m_row['m']              = 251;
+    m_row['q'] = m_row['a'] = m_row['z']                                        = m_row['p'] = 253;
+
+
     m_col['Q'] = m_col['X'] = m_col['S'] = m_col['W'] = m_col['.'] = m_col['8'] = m_col['1'] = 127;
     m_col['A'] = m_col['C'] = m_col['D'] = m_col['E'] = m_col['L'] = m_col['9'] = m_col['2'] = 191;
     m_col[0x1b]= m_col['Z'] = m_col['V'] = m_col['F'] = m_col['R'] = m_col['O'] = m_col['0'] = m_col['3'] = 223;
     m_col[' '] = m_col['B'] = m_col['G'] = m_col['T'] = m_col['\n']= m_col[':'] = m_col['4'] = 239;
     m_col['/'] = m_col['N'] = m_col['H'] = m_col['Y'] = m_col['\r']= m_col['-'] = m_col['5'] = 247;
-    m_col[';'] = m_col['M'] = m_col['J'] = m_col['U'] = m_col[0x7F]= m_col['6'] = 251;
-    m_col['P'] = m_col[','] = m_col['K'] = m_col['I'] = m_col['7'] = 253;
+    m_col[';'] = m_col['M'] = m_col['J'] = m_col['U'] = m_col[0x7F]= m_col['6']              = 251;
+    m_col['P'] = m_col[','] = m_col['K'] = m_col['I'] = m_col['7']                           = 253;
+
+    // Lowercase versions of above
+    m_col['q'] = m_col['x'] = m_col['s'] = m_col['w']                                        = 127;
+    m_col['a'] = m_col['c'] = m_col['d'] = m_col['e'] = m_col['l']                           = 191;
+                 m_col['z'] = m_col['v'] = m_col['f'] = m_col['r'] = m_col['o']              = 223;
+                 m_col['b'] = m_col['g'] = m_col['t']                                        = 239;
+                 m_col['n'] = m_col['h'] = m_col['y']                                        = 247;
+                 m_col['m'] = m_col['j'] = m_col['u']                                        = 251;
+    m_col['p']              = m_col['k'] = m_col['i']                                        = 253;
 
     // Shifted versions of keys
     m_row['!'] = m_row['"'] = m_row['#'] = m_row['$'] = m_row['%'] = m_row['&'] = m_row['\''] = 127;
@@ -192,14 +209,21 @@ void Sim6502::setPC(uint16_t val)
 
 void Sim6502::write(uint16_t address, uint8_t byte)
 {
-    if (isRam(address) || isRom(address)) {
+    assert(address >= 0);
+    assert(address <= 0xffff);
+
+    if (isRam(address)) {
         m_memory[address] = byte;
+    } else if (isRom(address)) {
+        cout << "Memory: attempt to write to ROM address $" << setw(4) << address << endl;
     } else if (isVideo(address)) {
         writeVideo(address, byte);
     } else if (isPeripheral(address)) {
         writePeripheral(address, byte);
     } else if (isKeyboard(address)) {
         writeKeyboard(address, byte);
+    } else {
+        cout << "Memory: Invalid write to $" << setw(4) << address << endl;
     }
 }
 
@@ -301,6 +325,9 @@ void Sim6502::writeKeyboard(uint16_t address, uint8_t byte)
 
 uint8_t Sim6502::read(uint16_t address)
 {
+    assert(address >= 0);
+    assert(address <= 0xffff);
+
     if (isRam(address) || isRom(address)) {
         return m_memory[address];
     }
@@ -366,23 +393,39 @@ uint8_t Sim6502::readKeyboard(uint16_t address)
     cout << "Keyboard: scanning row $" << (int)m_keyboardRowRegister << endl;
 
     if (!m_sendingCharacter) {
-        dumpVideo();
-        cout << "Enter key (Enter for none): " << flush;
-        string s;
-        getline(cin, s);
+        dumpVideo(); // Show screen
 
-        if (cin.eof()) {
-            cout << endl;
-            exit(0);
-            return 0xff;
-        }
-
-        if (s.length() > 0) {
-            pressKey(s[0]);
+        if (!m_keyboardFifo.empty()) { // If fifo not empty
+            pressKey(m_keyboardFifo.front()); // Get next key from fifo
+            m_keyboardFifo.pop(); // And remove it from fifo
         } else {
-            pressKey('\r'); // Send Return
+            // Prompt for (keys) to press
+            cout << "Keyboard: input: " << flush;
+            string s;
+            getline(cin, s);
+
+            if (cin.eof()) {
+                cout << endl;
+                exit(0);
+                return 0xff;
+            }
+
+            if (s.length() > 0) {
+                for (auto i : s) {
+                    m_keyboardFifo.push(i); // Push character(s) into fifo
+                }
+                if (s.length() > 1) {
+                    m_keyboardFifo.push('\r'); // If more than than one char, append Return for convenience
+                }
+                pressKey(m_keyboardFifo.front()); // Send first character
+                m_keyboardFifo.pop(); // And remove it from fifo
+            } else {
+                pressKey('\r'); // Send Return
+            }
         }
     }
+
+    // We already have a character to send.
 
     if (m_keyboardRowRegister == m_desiredRow) {
         m_tries++; // Need to send key pressed 4 times for software debouncing, then send no key pressed 4 times.
@@ -600,9 +643,9 @@ void Sim6502::step()
     uint8_t opcode = m_memory[m_regPC];
     uint8_t operand1 = m_memory[m_regPC + 1];
     uint8_t operand2 = m_memory[m_regPC + 2];
-    uint8_t tmp1;
-    uint8_t tmp2;
-    int tmp3;
+    uint8_t tmp1 =0;
+    uint8_t tmp2 = 0;
+    int16_t tmp3 = 0;
 
     switch (opcode) {
 
@@ -613,10 +656,11 @@ void Sim6502::step()
         break;
 
     case 0x01: // ora (xx,x)
-        m_regA |= read(read(operand1) + 256 * read(operand1 + 1) + m_regX);
+        tmp1 = (operand1 + m_regX) & 0xff;
+        m_regA |= read(read(tmp1) + 256 * read(tmp1 + 1));
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "ora ($" << setw(2) << (int)operand1 << ",x)" << " ($" << (int)read(read(operand1) + 256 * read(operand1 + 1) + m_regX) << ")" << endl;
+        cout << "ora ($" << setw(2) << (int)operand1 << ",x)" << endl;
         len = 2;
         break;
 
@@ -624,7 +668,7 @@ void Sim6502::step()
         m_regA |= read(operand1);
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "ora $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "ora $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -635,7 +679,7 @@ void Sim6502::step()
         write(operand1, tmp1);
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
-        cout << "asl $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "asl $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -661,6 +705,25 @@ void Sim6502::step()
         cout << "asla" << endl;
         break;
 
+    case 0x0d: // ora xxxx
+        m_regA |= read(operand1 + 256 * operand2);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "ora $" << setw(4) << operand1 + 256 * operand2 << endl;
+        len = 3;
+        break;
+
+    case 0x0e: // asl xxxx
+        tmp1 = read(operand1 + 256 * operand2);
+        (tmp1 & 0x80) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        tmp1 = (tmp1 << 1) & 0xff; // Shift left
+        write(operand1 + 256 * operand2, tmp1);
+        (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        cout << "asl $" << setw(4) << operand1 + 256 * operand2 << endl;
+        len = 2;
+        break;
+
     case 0x10: // bpl
         if (!(m_regP & S_BIT)) {
             if (operand1 > 0x7f) { // Branch taken
@@ -675,20 +738,63 @@ void Sim6502::step()
         cout << "bpl $" << setw(2) << (int)operand1 << endl;
         break;
 
+    case 0x11: // ora (xx),y
+        m_regA |= read(read(operand1) + 256 * read(operand1 + 1) + m_regY);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "ora ($" << setw(2) << (int)operand1 << "),y" << endl;
+        len = 2;
+        break;
+
+    case 0x15: // ora xx,x
+        m_regA |= read((operand1 + m_regX) & 0xff);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "ora $" << setw(2) << (int)operand1 << ",x" << endl;
+        len = 2;
+        break;
+
     case 0x16: // asl xx,x
-        tmp1 = read(operand1 + m_regX);
+        tmp1 = read((operand1 + m_regX) & 0xff);
         (tmp1 & 0x80) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
         tmp1 = (tmp1 << 1) & 0xff; // Shift left
-        write(operand1 + m_regX, tmp1);
+        write((operand1 + m_regX) & 0xff, tmp1);
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
-        cout << "asl $" << setw(2) << (int)operand1 << ",x" << " ($" << (int)tmp1 << ")" << endl;
+        cout << "asl $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
     case 0x18: // clc
         m_regP &= ~C_BIT;
         cout << "clc" << endl;
+        break;
+
+    case 0x19: // ora xxxx,y
+        m_regA |= read(operand1 + 256 * operand2 + m_regY);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "ora $" << setw(4) << operand1 + 256 * operand2 << ",y" << endl;
+        len = 3;
+        break;
+
+    case 0x1d: // ora xxxx,x
+        m_regA |= read(operand1 + 256 * operand2 + m_regX);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "ora $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 3;
+        break;
+
+    case 0x1e: // asl xxxx,x
+        tmp1 = read(operand1 + 256 * operand2 + m_regX);
+        (tmp1 & 0x80) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        tmp1 = (tmp1 << 1) & 0xff; // Shift left
+        write(operand1 + 256 * operand2 + m_regX, tmp1);
+        (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        cout << "asl $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 2;
         break;
 
     case 0x20: // jsr xxxx
@@ -701,11 +807,20 @@ void Sim6502::step()
         len = 0;
         break;
 
+    case 0x21: // and (xx,x)
+        tmp1 = (operand1 + m_regX) & 0xff;
+        m_regA &= read(read(tmp1) + 256 * read(tmp1 + 1));
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "and ($" << setw(2) << (int)operand1 << ",x)" << endl;
+        len = 2;
+        break;
+
     case 0x24: // bit xx
         ((m_regA & read(operand1)) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((read(operand1) & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         ((read(operand1) & 0x40) != 0) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
-        cout << "bit $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "bit $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -726,7 +841,7 @@ void Sim6502::step()
         write(operand1, tmp2); // Write back
         (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
-        cout << "rol $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "rol $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -758,7 +873,28 @@ void Sim6502::step()
         ((m_regA & read(operand1 + 256 * operand2)) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((read(operand1 + 256 * operand2) & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         ((read(operand1 + 256 * operand2) & 0x40) != 0) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
-        cout << "bit $" << setw(4) << (int)(operand1 + 256 * operand2) << " ($" << (int) read(operand1 + 256 * operand2) << ")" << endl;
+        cout << "bit $" << setw(4) << (int)(operand1 + 256 * operand2) << endl;
+        len = 3;
+        break;
+
+    case 0x2d: // and xxxx
+        m_regA &= read(operand1 + 256 * operand2);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "and $" << setw(4) << operand1 + 256 * operand2 << endl;
+        len = 3;
+        break;
+
+    case 0x2e: // rol xxxx
+        tmp1 = (m_regP & 0x01) ? 0x01 : 0x00; // Save original C flag
+        tmp2 = read(operand1 + 256 * operand2); // Read value
+        (tmp2 & 0x80) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set new C flag
+        tmp2 = (tmp2 << 1) & 0xff; // Shift left
+        tmp2 |= tmp1; // Set LSB of result to original C bit
+        write(operand1 + 256 * operand2, tmp2); // Write back
+        (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        cout << "rol $" << setw(2) << (int)operand1 << endl;
         len = 3;
         break;
 
@@ -776,29 +912,95 @@ void Sim6502::step()
         cout << "bmi $" << setw(2) << (int)operand1 << endl;
         break;
 
+    case 0x31: // and (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
+        m_regA &= read(read(operand1) + 256 * read(operand1 + 1) + m_regY);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "and ($" << setw(2) << (int)operand1 << "),y" << endl;
+        len = 2;
+        break;
+
+    case 0x35: // and xx,x
+        m_regA &= read((operand1 + m_regX) & 0xff);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "and $" << setw(2) << (int)operand1 << ",x" << endl;
+        len = 2;
+        break;
+
     case 0x36: // rol xx,x
         tmp1 = (m_regP & 0x01) ? 0x01 : 0x00; // Save original C flag
-        tmp2 = read(operand1 + m_regX); // Read value
+        tmp2 = read((operand1 + m_regX) & 0xff); // Read value
         (tmp2 & 0x80) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set new C flag
         tmp2 = (tmp2 << 1) & 0xff; // Shift left
         tmp2 |= tmp1; // Set LSB of result to original C bit
-        write(operand1 + m_regX, tmp2); // Write back
+        write((operand1 + m_regX) & 0xff, tmp2); // Write back
         (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         cout << "rol $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
-        break;       
+        break;
 
     case 0x38: // sec
         m_regP |= C_BIT;
         cout << "sec" << endl;
         break;
 
+    case 0x39: // and xxxx,y
+        m_regA &= read(operand1 + 256 * operand2 + m_regY);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "and $" << setw(4) << operand1 + 256 * operand2 << ",y" << endl;
+        len = 3;
+        break;
+
+    case 0x3d: // and xxxx,x
+        m_regA &= read(operand1 + 256 * operand2 + m_regX);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "and $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 3;
+        break;
+
+    case 0x3e: // rol xxxx,x
+        tmp1 = (m_regP & 0x01) ? 0x01 : 0x00; // Save original C flag
+        tmp2 = read(operand1 + 256 * operand2 + m_regX); // Read value
+        (tmp2 & 0x80) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set new C flag
+        tmp2 = (tmp2 << 1) & 0xff; // Shift left
+        tmp2 |= tmp1; // Set LSB of result to original C bit
+        write(operand1 + 256 * operand2 + m_regX, tmp2); // Write back
+        (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        cout << "rol $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 3;
+        break;
+
+    case 0x40: // rti
+        m_regSP++;
+        m_regP = read(STACK + m_regSP); // Pull procesor status reg
+        m_regSP++;
+        m_regPC = read(STACK + m_regSP); // Pull PC low byte
+        m_regSP++;
+        m_regPC += read(STACK + m_regSP) << 8; // Pull PC high byte
+        cout << "rti" << endl;
+        len = 0;
+        break;
+
+    case 0x41: // eor (xx,x)
+        tmp1 = (operand1 + m_regX) & 0xff;
+        m_regA ^= read(read(tmp1) + 256 * read(tmp1 + 1));
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "eor ($" << setw(2) << (int)operand1 << ",x)" << endl;
+        len = 2;
+        break;
+
     case 0x45: // eor xx
         m_regA ^= read(operand1);
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "eor $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "eor $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -809,7 +1011,7 @@ void Sim6502::step()
         write(operand1, tmp1); // Write back
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         m_regP &= ~S_BIT; // Clear S flag
-        cout << "lsr $" << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "lsr $" << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -841,6 +1043,25 @@ void Sim6502::step()
         len = 0;
         break;
 
+    case 0x4d: // eor xxxx
+        m_regA ^= read(operand1 + 256 * operand2);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "eor $" << setw(4) << operand1 + 256 * operand2 << endl;
+        len = 3;
+        break;
+
+    case 0x4e: // lsr xxxx
+        tmp1 = read(operand1 + 256 * operand2); // Read value
+        (tmp1 & 0x01) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        tmp1 = (tmp1 >> 1) & 0xff; // Shift right
+        write(operand1 + 256 * operand2, tmp1); // Write back
+        (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        m_regP &= ~S_BIT; // Clear S flag
+        cout << "lsr $" << setw(4) << operand1 + 256 * operand2 << endl;
+        len = 2;
+        break;
+
     case 0x50: // bvc xx
         if (!(m_regP & V_BIT)) {
             if (operand1 > 0x7f) { // Branch taken
@@ -855,27 +1076,63 @@ void Sim6502::step()
         cout << "bvc $" << setw(2) << (int)operand1 << endl;
         break;
 
-    case 0x55: // eor xx,x
-        m_regA ^= read(operand1 + m_regX);
+    case 0x51: // eor (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
+        m_regA ^= read(read(operand1) + 256 * read(operand1 + 1) + m_regY);
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "eor $" << setw(2) << (int)operand1 << ",x" << " ($" << (int)read(operand1 + m_regX) << ")" << endl;
+        cout << "eor ($" << setw(2) << (int)operand1 << "),y" << endl;
+        len = 2;
+        break;
+
+    case 0x55: // eor xx,x
+        m_regA ^= read((operand1 + m_regX) & 0xff);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "eor $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
     case 0x56: // lsr xx,x
-        tmp1 = read(operand1 + m_regX); // Read value
+        tmp1 = read((operand1 + m_regX) & 0xff); // Read value
         (tmp1 & 0x01) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
         tmp1 = (tmp1 >> 1) & 0xff; // Shift right
-        write(operand1 + m_regX, tmp1); // Write back
+        write((operand1 + m_regX) & 0xff, tmp1); // Write back
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         m_regP &= ~S_BIT; // Clear S flag
-        cout << "lsr $" << (int)operand1 << ",x" << " ($" << (int)tmp1 << ")" << endl;
+        cout << "lsr $" << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
     case 0x58: // cli
         m_regP &= ~I_BIT; // Clear I flag
+        break;
+
+    case 0x59: // eor xxxx,y
+        m_regA ^= read(operand1 + 256 * operand2 + m_regY);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "eor $" << setw(4) << operand1 + 256 * operand2 << ",y" << endl;
+        len = 3;
+        break;
+
+    case 0x5d: // eor xxxx,x
+        m_regA ^= read(operand1 + 256 * operand2 + m_regX);
+        (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "eor $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 3;
+        break;
+
+    case 0x5e: // lsr xxxx,x
+        tmp1 = read(operand1 + 256 * operand2 + m_regX); // Read value
+        (tmp1 & 0x01) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        tmp1 = (tmp1 >> 1) & 0xff; // Shift right
+        write(operand1 + 256 * operand2 + m_regX, tmp1); // Write back
+        (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        m_regP &= ~S_BIT; // Clear S flag
+        cout << "lsr $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 2;
         break;
 
     case 0x60: // rts
@@ -886,6 +1143,22 @@ void Sim6502::step()
         m_regPC++; // Increment PC by 1
         cout << "rts" << endl;
         len = 0;
+        break;
+
+    case 0x61: // adc (xx,x)
+        if (m_regP & D_BIT) {
+            cout << "Warning: Decimal mode not implemented." << endl;
+        }
+        tmp1 = (operand1 + m_regX) & 0xff;
+        tmp3 = read(read(tmp1) + 256 * read(tmp1 + 1));
+        if (m_regP & C_BIT) tmp3++; // Add 1 if carry set
+        ((tmp3 & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        ((tmp3 < 0x00) || (tmp3 > 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        ((tmp3 & 0x80) != (read(read(tmp1) + 256 * read(tmp1 + 1)) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
+        m_regA = tmp3 & 0xff; // Mask result to 8 bits
+        cout << "adc ($" << setw(2) << (int)operand1 << ",x)" << endl;
+        len = 2;
         break;
 
     case 0x65: // adc xx
@@ -899,7 +1172,7 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "adc $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "adc $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -913,7 +1186,7 @@ void Sim6502::step()
         write(operand1, tmp2); // Write back
         (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
-        cout << "ror $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "ror $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -967,7 +1240,21 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1 + 256 * operand2) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "adc $" << setw(4) << (int)operand1 + 256 * operand2 << " ($" << (int)read(operand1 + 256 * operand2) << ")" << endl;
+        cout << "adc $" << setw(4) << (int)operand1 + 256 * operand2 << endl;
+        len = 3;
+        break;
+
+    case 0x6e: // ror xxxx
+        tmp1 = (m_regP & 0x01) ? 0x80 : 0x00; // Save original C flag in MSB
+        tmp2 = read(operand1 + 256 * operand2); // Read value
+        cout << "tmp2 = " << (int)tmp2 << endl;
+        (tmp2 & 0x01) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set new C flag
+        tmp2 = (tmp2 >> 1) & 0xff; // Shift right
+        tmp2 |= tmp1; // Set MSB of result to original C bit
+        write(operand1 + 256 * operand2, tmp2); // Write back
+        (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        cout << "ror $" << setw(4) << operand1 + 256 * operand2 << endl;
         len = 3;
         break;
 
@@ -985,17 +1272,52 @@ void Sim6502::step()
         cout << "bvs $" << setw(2) << (int)operand1 << endl;
         break;
 
+    case 0x71: // adc (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
+        if (m_regP & D_BIT) {
+            cout << "Warning: Decimal mode not implemented." << endl;
+        }
+        tmp3 = read(read(operand1) + 256 * read(operand1 + 1) + m_regY);
+        if (m_regP & C_BIT) tmp3++; // Add 1 if carry set
+        ((tmp3 & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        ((tmp3 < 0x00) || (tmp3 > 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp3 & 0x80) != ((read(read(operand1) + 256 * read(operand1 + 1)) + m_regY) & 0x80) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
+        m_regA = tmp3 & 0xff; // Mask result to 8 bits
+        cout << "adc ($" << setw(2) << (int)operand1 << "),y" << endl;
+        len = 2;
+        break;
+
+    case 0x75: // adc xx,x
+        if (m_regP & D_BIT) {
+            cout << "Warning: Decimal mode not implemented." << endl;
+        }
+        tmp3 = m_regA + read((operand1 + m_regX) & 0xff); // Add operand
+        if (m_regP & C_BIT) tmp3++; // Add 1 if carry set
+        ((tmp3 & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        ((tmp3 < 0x00) || (tmp3 > 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp3 & 0x80) != ((read((operand1 + m_regX) & 0xff) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
+        m_regA = tmp3 & 0xff; // Mask result to 8 bits
+        cout << "adc $" << setw(2) << (int)operand1 << ",x" << endl;
+        len = 2;
+        break;
+
     case 0x76: // ror xx,x
         tmp1 = (m_regP & 0x01) ? 0x80 : 0x00; // Save original C flag in MSB
-        tmp2 = read(operand1 + m_regX); // Read value
+        tmp2 = read((operand1 + m_regX) & 0xff); // Read value
         (tmp2 & 0x01) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set new C flag
         tmp2 = (tmp2 >> 1) & 0xff; // Shift right
         tmp2 |= tmp1; // Set MSB of result to original C bit
-        write(operand1 + m_regX, tmp2); // Write back
+        write((operand1 + m_regX) & 0xff, tmp2); // Write back
         (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
-        cout << "ror $" << setw(2) << (int)operand1 << ",x" << " ($" << (int)tmp2 << ")" << endl;
+        cout << "ror $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
+        break;
+
+    case 0x78: // sei
+        m_regP |= I_BIT;
         break;
 
     case 0x79: // adc xxxx,y
@@ -1009,7 +1331,7 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1 + 256 * operand2 + m_regY) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "adc $" << setw(4) << (int)operand1 + 256 * operand2 << ",y" << " ($" << (int)read(operand1 + 256 * operand2 + m_regY) << ")" << endl;
+        cout << "adc $" << setw(4) << (int)operand1 + 256 * operand2 << ",y" << endl;
         len = 3;
         break;
 
@@ -1024,8 +1346,29 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1 + 256 * operand2 + m_regX) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "adc $" << setw(4) << (int)operand1 + 256 * operand2 << ",x" << " ($" << (int)read(operand1 + 256 * operand2 + m_regX) << ")" << endl;
+        cout << "adc $" << setw(4) << (int)operand1 + 256 * operand2 << ",x" << endl;
         len = 3;
+        break;
+
+    case 0x7e: // ror xxxx,x
+        tmp1 = (m_regP & 0x01) ? 0x80 : 0x00; // Save original C flag in MSB
+        tmp2 = read(operand1 + 256 * operand2 + m_regX); // Read value
+        cout << "tmp2 = " << (int)tmp2 << endl;
+        (tmp2 & 0x01) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set new C flag
+        tmp2 = (tmp2 >> 1) & 0xff; // Shift right
+        tmp2 |= tmp1; // Set MSB of result to original C bit
+        write(operand1 + 256 * operand2 + m_regX, tmp2); // Write back
+        (tmp2 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (tmp2 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        cout << "ror $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
+        len = 3;
+        break;
+
+    case 0x81: // sta (xx,x)
+        tmp1 = (operand1 + m_regX) & 0xff;
+        write(read(tmp1) + 256 * read(tmp1 + 1), m_regA);
+        cout << "sta ($" << setw(2) << (int)operand1 << ",x)" << endl;
+        len = 2;
         break;
 
     case 0x84: // sty xx
@@ -1093,20 +1436,27 @@ void Sim6502::step()
         break;
 
     case 0x91: // sta (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
         write(read(operand1) + 256 * read(operand1 + 1) + m_regY, m_regA);
         cout << "sta ($" << setw(2) << (int)operand1 << "),y" << endl;
         len = 2;
         break;
 
     case 0x94: // sty xx,x
-        write(operand1 + m_regX, m_regY);
+        write((operand1 + m_regX) & 0xff, m_regY);
         cout << "sty $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
     case 0x95: // sta xx,x
-        write(operand1 + m_regX, m_regA);
+        write((operand1 + m_regX) & 0xff, m_regA);
         cout << "sta $" << setw(2) << (int)operand1 << ",x" << endl;
+        len = 2;
+        break;
+
+    case 0x96: // stx xx,y
+        write((operand1 + m_regY) & 0xff, m_regX);
+        cout << "stx $" << setw(2) << (int)operand1 << ",y" << endl;
         len = 2;
         break;
 
@@ -1115,6 +1465,12 @@ void Sim6502::step()
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         cout << "tya" << endl;
+        break;
+
+    case 0x99: // sta xxxx,y
+        write(operand1 + 256 * operand2 + m_regY, m_regA);
+        cout << "sta $" << setw(4) << operand1 + 256 * operand2 << ",y" << endl;
+        len = 3;
         break;
 
     case 0x9a: // txs
@@ -1128,12 +1484,6 @@ void Sim6502::step()
         len = 3;
         break;
 
-    case 0x99: // sta xxxx,y
-        write(operand1 + 256 * operand2 + m_regY, m_regA);
-        cout << "sta $" << setw(4) << operand1 + 256 * operand2 << ",y" << endl;
-        len = 3;
-        break;
-
     case 0xa0: // ldy #
         m_regY = operand1;
         (m_regY & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
@@ -1143,7 +1493,8 @@ void Sim6502::step()
         break;
 
     case 0xa1: // lda (xx,x)
-        m_regA = read(read(operand1) + 256 * read(operand1 + 1) + m_regX);
+        tmp1 = (operand1 + m_regX) & 0xff;
+        m_regA = read(read(tmp1) + 256 * read(tmp1 + 1));
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         cout << "lda ($" << setw(2) << (int)operand1 << ",x)" << endl;
@@ -1243,6 +1594,7 @@ void Sim6502::step()
         break;
 
     case 0xb1: // lda (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
         m_regA = read(read(operand1) + 256 * read(operand1 + 1) + m_regY);
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
@@ -1251,7 +1603,7 @@ void Sim6502::step()
         break;
 
     case 0xb4: // ldy xx,x
-        m_regY = read(operand1 + m_regX);
+        m_regY = read((operand1 + m_regX) & 0xff);
         (m_regY & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regY == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         cout << "ldy $" << setw(2) << (int)operand1 << ",x" << endl;
@@ -1259,11 +1611,23 @@ void Sim6502::step()
         break;
 
     case 0xb5: // lda xx,x
-        m_regA = read(operand1 + m_regX);
+        m_regA = read((operand1 + m_regX) & 0xff);
         (m_regA & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         cout << "lda $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
+        break;
+
+    case 0xb6: // ldx xx,y
+        m_regX = read((operand1 + m_regY) & 0xff);
+        (m_regX & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regX == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "ldx $" << setw(2) << (int)operand1 << ",y" << endl;
+        len = 2;
+        break;
+
+    case 0xb8: // clv
+        m_regP &= ~V_BIT; // Clear V flag
         break;
 
     case 0xb9: // lda xxxx,y
@@ -1313,11 +1677,20 @@ void Sim6502::step()
         len = 2;
         break;
 
+    case 0xc1: // cmp (xx,x)
+        tmp1 = (operand1 + m_regX) & 0xff;
+        (m_regA == read(read(tmp1) + 256 * read(tmp1 + 1))) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        ((m_regA < read(read(tmp1) + 256 * read(tmp1 + 1))) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA >= read(read(tmp1) + 256 * read(tmp1 + 1))) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        cout << "cmp ($" << setw(2) << (int)operand1 << ",x)" << endl;
+        len = 2;
+        break;
+
     case 0xc4: // cpy xx
         (m_regY == read(operand1)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regY < read(operand1)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regY >= read(operand1)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cpy $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "cpy $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -1325,7 +1698,7 @@ void Sim6502::step()
         (m_regA == read(operand1)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regA < read(operand1)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA >= read(operand1)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cmp $" << setw(2) << (int)(operand1) << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "cmp $" << setw(2) << (int)(operand1) << endl;
         len = 2;
         break;
 
@@ -1334,7 +1707,7 @@ void Sim6502::step()
         write(operand1, tmp1);
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "dec $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "dec $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -1364,7 +1737,7 @@ void Sim6502::step()
         (m_regY == read(operand1 + 256 * operand2)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regY < read(operand1 + 256 * operand2)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regY >= read(operand1 + 256 * operand2)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cpy $" << setw(4) << operand1 + 256 * operand2 << " ($" << (int)read(operand1 + 256 * operand2) << ")" << endl;
+        cout << "cpy $" << setw(4) << operand1 + 256 * operand2 << endl;
         len = 3;
         break;
 
@@ -1372,7 +1745,7 @@ void Sim6502::step()
         (m_regA == read(operand1 + 256 * operand2)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regA < read(operand1 + 256 * operand2)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA >= read(operand1 + 256 * operand2)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cmp $" << setw(4) << (int)(operand1 + 256 * operand2) << " ($" << (int)read(operand1 + 256 * operand2) << ")" << endl;
+        cout << "cmp $" << setw(4) << (int)(operand1 + 256 * operand2) << endl;
         len = 3;
         break;
 
@@ -1381,7 +1754,7 @@ void Sim6502::step()
         write(operand1 + 256 * operand2, tmp1);
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "dec $" << setw(4) << operand1 + 256 * operand2 << " ($" << (int)tmp1 << ")" << endl;
+        cout << "dec $" << setw(4) << operand1 + 256 * operand2 << endl;
         len = 3;
         break;
 
@@ -1400,11 +1773,28 @@ void Sim6502::step()
         break;
 
     case 0xd1: // cmp (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
         (m_regA == read(read(operand1) + 256 * read(operand1 + 1) + m_regY)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regA < read(read(operand1) + 256 * read(operand1 + 1) + m_regY)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA >= read(read(operand1) + 256 * read(operand1 + 1) + m_regY)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cmp ($" << setw(2) << (int)read(read(operand1) + 256 * read(operand1 + 1) + m_regY) << "),y"
-             << " ($" << (int)read(read(operand1) + 256 * read(operand1 + 1) + m_regY) << ")" << endl;
+        cout << "cmp ($" << setw(2) << (int)operand1 << "),y" << endl;
+        len = 2;
+        break;
+
+    case 0xd5: // cmp xx,x
+        (m_regA == read((operand1 + m_regX) & 0xff)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        (m_regA < (read((operand1 + m_regX) & 0xff) & 0x80)) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA >= read((operand1 + m_regX) & 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        cout << "cmp $" << setw(2) << (int)operand1 << ",x" << endl;
+        len = 2;
+        break;
+
+    case 0xd6: // dec xx,x
+        tmp1 = read((operand1 + m_regX) & 0xff) - 1;
+        write((operand1 + m_regX) & 0xff, tmp1);
+        (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "dec $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
@@ -1415,17 +1805,26 @@ void Sim6502::step()
 
     case 0xd9: // cmp xxxx,y
         (m_regA == read(operand1 + 256 * operand2 + m_regY)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        ((m_regA < read(operand1 + 256 * operand2) + m_regY) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA < (read(operand1 + 256 * operand2 + m_regY) & 0x80)) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA >= read(operand1 + 256 * operand2 + m_regY)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cmp $" << setw(4) << (int)(operand1 + 256 * operand2) << ",y" << " ($" << (int)read(operand1 + 256 * operand2 + m_regY) << ")" << endl;
+        cout << "cmp $" << setw(4) << (int)(operand1 + 256 * operand2) << ",y" << endl;
         len = 3;
         break;
 
     case 0xdd: // cmp xxxx,x
         (m_regA == read(operand1 + 256 * operand2 + m_regX)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        ((m_regA < read(operand1 + 256 * operand2) + m_regX) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (m_regA < (read(operand1 + 256 * operand2 + m_regX) & 0x80)) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regA >= read(operand1 + 256 * operand2 + m_regX)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cmp $" << setw(4) << (int)(operand1 + 256 * operand2) << ",x" << " ($" << (int)read(operand1 + 256 * operand2 + m_regX) << ")" << endl;
+        cout << "cmp $" << setw(4) << (int)(operand1 + 256 * operand2) << ",x" << endl;
+        len = 3;
+        break;
+
+    case 0xde: // dec xxxx,x
+        tmp1 = read(operand1 + 256 * operand2 + m_regX) - 1;
+        write(operand1 + 256 * operand2 + m_regX, tmp1);
+        (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        cout << "dec $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
         len = 3;
         break;
 
@@ -1437,11 +1836,27 @@ void Sim6502::step()
         len = 2;
         break;
 
+    case 0xe1: // sbc (xx,x)
+        if (m_regP & D_BIT) {
+            cout << "Warning: Decimal mode not implemented." << endl;
+        }
+        tmp1 = (operand1 + m_regX) & 0xff;
+        tmp3 = m_regA - (read(tmp1) + 256 * read(tmp1 + 1)); // Subtract operand
+        if (!(m_regP & C_BIT)) tmp3--; // Subtract 1 if carry not set
+        ((tmp3 & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
+        ((tmp3 >= 0) && (tmp3 <= 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
+        ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
+        ((tmp3 & 0x80) != ((read(tmp1) + 256 * read(tmp1 + 1)) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
+        m_regA = tmp3 & 0xff; // Mask result to 8 bits
+        cout << "sbc $" << setw(2) << (int)operand1 << endl;
+        len = 2;
+        break;
+
     case 0xe4: // cpx xx
         (m_regX == read(operand1)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regX < read(operand1)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regX >= read(operand1)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cpx $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "cpx $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -1456,7 +1871,7 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "sbc $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "sbc $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -1466,7 +1881,7 @@ void Sim6502::step()
         write(operand1, tmp1);
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "inc $" << setw(2) << (int)operand1 << " ($" << (int)read(operand1) << ")" << endl;
+        cout << "inc $" << setw(2) << (int)operand1 << endl;
         len = 2;
         break;
 
@@ -1500,7 +1915,7 @@ void Sim6502::step()
         (m_regX == read(operand1 + 256 * operand2)) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((m_regX < read(operand1 + 256 * operand2)) & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (m_regX >= read(operand1 + 256 * operand2)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
-        cout << "cpx $" << setw(4) << operand1 + 256 * operand2 << " ($" << (int)read(operand1 + 256 * operand2) << ")" << endl;
+        cout << "cpx $" << setw(4) << operand1 + 256 * operand2 << endl;
         len = 3;
         break;
 
@@ -1515,7 +1930,7 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1 + 256 * operand2) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "sbc $" << setw(4) << operand1 + 256 * operand2 << " ($" << (int)tmp3 << ")" << endl;
+        cout << "sbc $" << setw(4) << operand1 + 256 * operand2 << endl;
         len = 3;
         break;
 
@@ -1524,7 +1939,7 @@ void Sim6502::step()
         write(operand1 + 256 * operand2, tmp1);
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "inc $" << setw(4) << operand1 + 256 * operand2 << " ($" << (int)tmp1 << ")" << endl;
+        cout << "inc $" << setw(4) << operand1 + 256 * operand2 << endl;
         len = 3;
         break;
 
@@ -1543,15 +1958,16 @@ void Sim6502::step()
         break;
 
     case 0xf1: // sbc (xx),y
+        assert(read(read(operand1) + 256 * read(operand1 + 1) + m_regY) <= 0xffff);
         if (m_regP & D_BIT) {
             cout << "Warning: Decimal mode not implemented." << endl;
         }
-        tmp3 = m_regA - read(read(operand1) + 256 * read(operand1 + 1)) + m_regY; // Subtract operand
+        tmp3 = m_regA - read(read(operand1) + 256 * read(operand1 + 1) + m_regY); // Subtract operand
         if (!(m_regP & C_BIT)) tmp3--; // Subtract 1 if carry not set
         ((tmp3 & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         ((tmp3 >= 0) && (tmp3 <= 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        ((tmp3 & 0x80) != ((read(read(operand1) + 256 * read(operand1 + 1)) + m_regY) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
+        ((tmp3 & 0x80) != ((read(read(operand1) + 256 * read(operand1 + 1) + m_regY)) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
         cout << "sbc ($" << setw(2) << (int)operand1 << "),y" << endl;
         len = 2;
@@ -1561,23 +1977,23 @@ void Sim6502::step()
         if (m_regP & D_BIT) {
             cout << "Warning: Decimal mode not implemented." << endl;
         }
-        tmp3 = m_regA - read(operand1 + m_regX); // Subtract operand
+        tmp3 = m_regA - read((operand1 + m_regX) & 0xff); // Subtract operand
         if (!(m_regP & C_BIT)) tmp3--; // Subtract 1 if carry not set
         ((tmp3 & 0x80) != 0) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         ((tmp3 >= 0) && (tmp3 <= 0xff)) ? m_regP |= C_BIT : m_regP &= ~C_BIT; // Set C flag
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        ((tmp3 & 0x80) != (read(operand1 + m_regX) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
+        ((tmp3 & 0x80) != (read((operand1 + m_regX) & 0xff) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "sbc $" << setw(4) << (int)operand1 << ",x" << " ($" << tmp3 << ")" << endl;
+        cout << "sbc $" << setw(4) << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
     case 0xf6: // inc xx,x
-        tmp1 = read(operand1 + m_regX) + 1;
-        write(operand1 + m_regX, tmp1);
+        tmp1 = read((operand1 + m_regX) & 0xff) + 1;
+        write((operand1 + m_regX) & 0xff, tmp1);
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "inc $" << setw(2) << (int)operand1 << ",x" << " ($" << (int)tmp1 << ")" << endl;
+        cout << "inc $" << setw(2) << (int)operand1 << ",x" << endl;
         len = 2;
         break;
 
@@ -1585,6 +2001,7 @@ void Sim6502::step()
         m_regP |= D_BIT;
         cout << "Warning: Decimal mode not implemented." << endl;
         cout << "sed" << endl;
+        exit(1);
         break;
 
     case 0xf9: // sbc xxxx,y
@@ -1613,7 +2030,7 @@ void Sim6502::step()
         ((tmp3 & 0xff) == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
         ((tmp3 & 0x80) != (read(operand1 + 256 * operand2 + m_regX) & 0x80)) ? m_regP |= V_BIT : m_regP &= ~V_BIT; // Set V flag
         m_regA = tmp3 & 0xff; // Mask result to 8 bits
-        cout << "sbc $" << setw(4) << operand1 + 256 * operand2 << ",x" << " ($" << tmp3 << ")" << endl;
+        cout << "sbc $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
         len = 3;
         break;
 
@@ -1622,16 +2039,19 @@ void Sim6502::step()
         write(operand1 + 256 * operand2 + m_regX, tmp1);
         (tmp1 & 0x80) ? m_regP |= S_BIT : m_regP &= ~S_BIT; // Set S flag
         (tmp1 == 0) ? m_regP |= Z_BIT : m_regP &= ~Z_BIT; // Set Z flag
-        cout << "inc $" << setw(4) << operand1 + 256 * operand2 << ",x" << " ($" << (int)tmp1 << ")" << endl;
+        cout << "inc $" << setw(4) << operand1 + 256 * operand2 << ",x" << endl;
         len = 3;
         break;
 
     default: // Invalid instruction, handle as NOP
-        //cout << "???" << endl;
-        cout << "??? unhandled opcode: " << setw(2) << (int)opcode << endl;
-        exit(1);
+        cout << "???" << endl;
         break;
     }
+
+    assert(tmp1 >= 0);
+    assert(tmp1 <= 0xff);
+    assert(tmp2 >= 0);
+    assert(tmp2 <= 0xff);
 
     m_regPC += len;
 }
