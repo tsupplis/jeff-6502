@@ -5,6 +5,10 @@
 #include <cstdint>
 #include <list>
 #include <queue>
+#include <istream>
+#include <ostream>
+#include <fstream>
+#include <fstream>
 
 using namespace std;
 
@@ -15,7 +19,7 @@ public:
     // CPU types. Currently only MOS6502 is supported.
     enum CpuType { MOS6502, Rockwell65C02, WDC65C02, WDC65816 };
 
-    // Perpheral types. Currently only M6850 is supported.
+    // Peripheral types. Currently only M6850 is supported.
     enum PeripheralType { MC6850, MC6820 };
 
     // Processor status register bits
@@ -31,7 +35,81 @@ public:
     // Stack address
     const uint16_t STACK = 0x0100;
 
+    // Addressing modes, used for disassembly
+    enum AddressMode
+        {
+         implicit, absolute, absoluteX, absoluteY, accumulator, immediate, indirectX,
+         indirectY, indirect, relative, zeroPage, zeroPageX, zeroPageY
+        };
+
+    // Lookup table of addressing modes. Given addressing mode, returns length of instruction in bytes.
+    const int lengthTable[13] =
+        {
+         1, 3, 3, 3, 1, 2, 2, 2, 3, 2, 2, 2, 2
+        };
+
+    // Opcodes for disassembly. Given opcode number, returns instruction name string.
+    const char *opCodeTable[256] =
+        {
+         "brk", "ora", "???", "???", "???", "ora", "asl", "???", "php", "ora", "asla", "???", "???", "ora", "asl", "???",
+         "bpl", "ora", "???", "???", "???", "ora", "asl", "???", "clc", "ora", "???",  "???", "???", "ora", "asl", "???",
+         "jsr", "and", "???", "???", "bit", "and", "rol", "???", "plp", "and", "rola", "???", "bit", "and", "rol", "???",
+         "bmi", "and", "???", "???", "???", "and", "rol", "???", "sec", "and", "???",  "???", "???", "and", "rol", "???",
+         "rti", "eor", "???", "???", "???", "eor", "lsr", "???", "pha", "eor", "lsra", "???", "jmp", "eor", "lsr", "???",
+         "bvc", "eor", "???", "???", "???", "eor", "lsr", "???", "cli", "eor", "???",  "???", "???", "eor", "lsr", "???",
+         "rts", "adc", "???", "???", "???", "adc", "ror", "???", "pla", "adc", "rora", "???", "jmp", "adc", "ror", "???",
+         "bvs", "adc", "???", "???", "???", "adc", "ror", "???", "sei", "adc", "???",  "???", "???", "adc", "ror", "???",
+         "???", "sta", "???", "???", "sty", "sta", "stx", "???", "dey", "???", "txa",  "???", "sty", "sta", "stx", "???",
+         "bcc", "sta", "???", "???", "sty", "sta", "stx", "???", "tya", "sta", "txs",  "???", "???", "sta", "???", "???",
+         "ldy", "lda", "ldx", "???", "ldy", "lda", "ldx", "???", "tay", "lda", "tax",  "???", "ldy", "lda", "ldx", "???",
+         "bcs", "lda", "???", "???", "ldy", "lda", "ldx", "???", "clv", "lda", "tsx",  "???", "ldy", "lda", "ldx", "???",
+         "cpy", "cmp", "???", "???", "cpy", "cmp", "dec", "???", "iny", "cmp", "dex",  "???", "cpy", "cmp", "dec", "???",
+         "bne", "cmp", "???", "???", "???", "cmp", "dec", "???", "cld", "cmp", "???",  "???", "???", "cmp", "dec", "???",
+         "cpx", "sbc", "???", "???", "cpx", "sbc", "inc", "???", "inx", "sbc", "nop",  "???", "cpx", "sbc", "inc", "???",
+         "beq", "sbc", "???", "???", "???", "sbc", "inc", "???", "sed", "sbc", "???",  "???", "???", "sbc", "inc", "???"
+        };
+
+    // Lookup table of addressing modes. Gven opcode number, returns addressing mode.
+    const AddressMode addressModeTable[256] =
+        {
+         implicit,  indirectX, implicit,    implicit, implicit,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, accumulator, implicit, implicit,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, implicit,  zeroPageX, zeroPageX, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, absoluteX, implicit,
+         absolute,  indirectX, implicit,    implicit, zeroPage,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, accumulator, implicit, absolute,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, implicit,  zeroPageX, zeroPageX, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, absoluteX, implicit,
+         implicit,  indirectX, implicit,    implicit, implicit,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, accumulator, implicit, absolute,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, implicit,  zeroPageX, zeroPageX, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, absoluteX, implicit,
+         implicit,  indirectX, implicit,    implicit, implicit,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, accumulator, implicit, indirect,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, implicit,  zeroPageX, zeroPageX, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, absoluteX, implicit,
+         implicit,  indirectX, implicit,    implicit, zeroPage,  zeroPage,  zeroPage,  implicit,
+         implicit,  implicit,  implicit,    implicit, absolute,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, zeroPageX, zeroPageX, zeroPageY, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, implicit,  implicit,
+         immediate, indirectX, immediate,   implicit, zeroPage,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, implicit,    implicit, absolute,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, zeroPageX, zeroPageX, zeroPageY, implicit,
+         implicit,  absoluteY, implicit,    implicit, absoluteX, absoluteX, absoluteY, implicit,
+         immediate, indirectX, implicit,    implicit, zeroPage,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, implicit,    implicit, absolute,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, implicit,  zeroPageX, zeroPageX, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, absoluteX, implicit,
+         immediate, indirectX, implicit,    implicit, zeroPage,  zeroPage,  zeroPage,  implicit,
+         implicit,  immediate, implicit,    implicit, absolute,  absolute,  absolute,  implicit,
+         relative,  indirectY, implicit,    implicit, implicit,  zeroPageX, zeroPageX, implicit,
+         implicit,  absoluteY, implicit,    implicit, implicit,  absoluteX, absoluteX, implicit
+        };
+
+    // Constructor
     Sim6502();
+
+    // Destructor
     ~Sim6502();
 
     CpuType cpuType();
@@ -59,7 +137,7 @@ public:
     void nmi();
 
     // Step CPU one instruction.
-    void step();
+    void step(bool over = false);
 
     // Set/get registers (A, X, Y, SR, SP, PC)
     uint8_t aReg() const;
@@ -119,6 +197,9 @@ public:
     // Dump memory to standard output
     void dumpMemory(uint16_t startAddress, uint16_t endAddress, bool showAscii=true);
 
+    // Disassemble memory to standard output. Returns next address to disassemble.
+    uint16_t disassembleMemory(uint16_t startAddress, uint16_t endAddress, bool showAscii=true);
+
     // Dump registers to standard output
     void dumpRegisters();
 
@@ -133,9 +214,30 @@ public:
     void clearBreakpoint(uint16_t address);
     std::list<uint16_t> getBreakpoints() const;
 
-    // TODO: Breakpoint hit (callback?).
-    // TODO: Keyboard/peripheral input (callback?).
-    // TODO: Illegal instruction (callback?).
+    // Watchpoint support
+    void setReadWatchpoint(uint16_t address);
+    void setWriteWatchpoint(uint16_t address);
+    void clearReadWatchpoint(uint16_t address);
+    void clearWriteWatchpoint(uint16_t address);
+    std::list<uint16_t> getReadWatchpoints() const;
+    std::list<uint16_t> getWriteWatchpoints() const;
+
+    bool stop(); // Return whether trace/go should stop due to event.
+    string stopReason(); // Return reason for stop
+
+    // Flags to control logging output
+    void loggingStatus();
+    void enableLogging(string category, bool enable = true);
+
+    // Control of options
+    bool stopInvalid();
+    void setStopInvalid(bool option);
+    bool stopBrk();
+    void setStopBrk(bool option);
+    string serialInputFile();
+    void setSerialInputFile(string filename);
+    string serialOutputFile();
+    void setSerialOutputFile(string filename);
 
   protected:
 
@@ -179,8 +281,34 @@ public:
     uint8_t m_col[128]{0}; // Keyboard column lookup table by key
     bool m_shifted[128]{false}; // Flags keys that need to be shifted
 
-    // TODO: Might want to use set rather than list
     std::list<uint16_t> m_breakpoints; // Breakpoint list
 
+    std::list<uint16_t> m_readWatchpoints; // Read watchpoint list
+    std::list<uint16_t> m_writeWatchpoints; // Write watchpoint list
+
     std::queue<char> m_keyboardFifo = {}; // Holds keyboard input
+
+    string m_serialInFilename = "serial.in"; // Default filename for serial port input
+    string m_serialOutFilename = "serial.out"; // Default filename for serial port input
+
+    ofstream m_serialOut; // File for emulating serial port output
+    ifstream m_serialIn; // File for emulating serial port input
+
+    // Flags to set whether to stop run/trace on specific events
+    bool m_stop = false;
+    string m_stopReason = "none";
+
+    // Control of options
+    bool m_stopInvalid = true;
+    bool m_stopBRK = true;
+
+    // Flags to control logging output
+    bool m_logErrors = true;
+    bool m_logWarnings = true;
+    bool m_logSerial = false;
+    bool m_logKeyboard = false;
+    bool m_logMemory = false;
+    bool m_logVideo = false;
+    bool m_logInstructions = false;
+    bool m_logRegisters = false;
 };
