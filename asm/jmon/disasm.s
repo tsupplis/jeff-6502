@@ -1,7 +1,7 @@
 ;
 ; 6502/65C02/65816 Disassembler
 ;
-; Copyright (C) 2012-2016 by Jeff Tranter <tranter@pobox.com>
+; Copyright (C) 2012-2020 by Jeff Tranter <tranter@pobox.com>
 ;
 ; Licensed under the Apache License, Version 2.0 (the "License");
 ; you may not use this file except in compliance with the License.
@@ -302,7 +302,7 @@ PRADDR:
   LDY ADDR+1
   .ifndef SOURCEONLY
   JSR PrintAddress      ; print address
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #3
   JSR PrintSpaces       ; then three spaces
 .elseif .defined(OSI)
@@ -310,7 +310,7 @@ PRADDR:
 .endif
   LDA OPCODE            ; get instruction op code
   JSR PrintByte         ; display the opcode byte
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   JSR PrintSpace
 .endif
   LDA LEN               ; how many bytes in the instruction?
@@ -320,7 +320,7 @@ PRADDR:
   BEQ THREE
   CMP #2
   BEQ TWO
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #5
 .elseif .defined(OSI)
   LDX #4
@@ -331,7 +331,7 @@ TWO:
   LDY #1
   LDA (ADDR),Y          ; get 1st operand byte
   JSR PrintByte         ; display it
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #3
 .elseif .defined(OSI)
   LDX #2
@@ -342,7 +342,7 @@ THREE:
   LDY #1
   LDA (ADDR),Y          ; get 1st operand byte
   JSR PrintByte         ; display it
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   JSR PrintSpace
 .endif
   LDY #2
@@ -353,13 +353,13 @@ FOUR:
   LDY #1
   LDA (ADDR),Y          ; get 1st operand byte
   JSR PrintByte         ; display it
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   JSR PrintSpace
 .endif
   LDY #2
   LDA (ADDR),Y          ; get 2nd operand byte
   JSR PrintByte         ; display it
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   JSR PrintSpace
 .endif
   LDY #3
@@ -369,7 +369,7 @@ FOUR:
   BNE SPC
 ONE:
   .endif                ; .ifndef SOURCEONLY
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #4
 .elseif .defined(OSI)
   LDX #1
@@ -421,7 +421,7 @@ DOMB:
   LSR
   LSR
   JSR PRHEX
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #2
 .elseif .defined(OSI)
   LDX #1
@@ -446,7 +446,7 @@ DOBB:                   ; handle special BBRn and BBSn instructions
   LSR
   LSR
   JSR PRHEX
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #2
 .elseif .defined(OSI)
   LDX #1
@@ -456,7 +456,7 @@ DOBB:                   ; handle special BBRn and BBSn instructions
   LDY #1
   LDA (ADDR),Y          ; get 1st operand byte (address)
   JSR PrintByte         ; display it
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDA #','
   JSR PrintChar
   JSR PrintDollar
@@ -476,19 +476,19 @@ DOBB:                   ; handle special BBRn and BBSn instructions
   LDA ADDR              ; take adresss
   CLC
   ADC REL               ; add offset
-  STA DEST              ; and store
+  STA DEZT              ; and store
   LDA ADDR+1            ; also high byte (including carry)
   ADC REL+1
-  STA DEST+1
-  LDA DEST              ; now need to add 3 more to the address
+  STA DEZT+1
+  LDA DEZT              ; now need to add 3 more to the address
   CLC
   ADC #3
-  STA DEST
-  LDA DEST+1
+  STA DEZT
+  LDA DEZT+1
   ADC #0                ; add any carry
-  STA DEST+1
+  STA DEZT+1
   JSR PrintByte         ; display high byte
-  LDA DEST
+  LDA DEZT
   JSR PrintByte         ; display low byte
   JMP DONEOPS
 TRYIMP:
@@ -501,7 +501,7 @@ TRYINV:
   BNE TRYACC
   JMP DONEOPS           ; no operands
 TRYACC:
-.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(KIM1) .or .defined(SBC)
   LDX #3
 .elseif .defined(OSI)
   LDX #1
@@ -581,19 +581,19 @@ ADD:
   LDA ADDR              ; take adresss
   CLC
   ADC REL               ; add offset
-  STA DEST              ; and store
+  STA DEZT              ; and store
   LDA ADDR+1            ; also high byte (including carry)
   ADC REL+1
-  STA DEST+1
-  LDA DEST              ; now need to add 2 more to the address
+  STA DEZT+1
+  LDA DEZT              ; now need to add 2 more to the address
   CLC
   ADC #2
-  STA DEST
-  LDA DEST+1
+  STA DEZT
+  LDA DEZT+1
   ADC #0                ; add any carry
-  STA DEST+1
+  STA DEZT+1
   JSR PrintByte         ; display high byte
-  LDA DEST
+  LDA DEZT
   JSR PrintByte         ; display low byte
   JMP DONEOPS
 TRYABS:
@@ -791,19 +791,19 @@ PCRL:
   LDA ADDR              ; take adresss
   CLC
   ADC REL               ; add offset
-  STA DEST              ; and store
+  STA DEZT              ; and store
   LDA ADDR+1            ; also high byte (including carry)
   ADC REL+1
-  STA DEST+1
-  LDA DEST              ; now need to add 3 more to the address
+  STA DEZT+1
+  LDA DEZT              ; now need to add 3 more to the address
   CLC
   ADC #3
-  STA DEST
-  LDA DEST+1
+  STA DEZT
+  LDA DEZT+1
   ADC #0                ; add any carry
-  STA DEST+1
+  STA DEZT+1
   JSR PrintByte         ; display high byte
-  LDA DEST
+  LDA DEZT
   JSR PrintByte         ; display low byte
   JMP DONEOPS
 
