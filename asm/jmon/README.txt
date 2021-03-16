@@ -5,7 +5,7 @@ A machine language monitor program for the Apple Replica 1, Apple II,
 Ohio Scientific Challenger 1P/Superboard II, Briel Superboard ///, or
 MOS Technology KIM-1.
 
-Copyright (C) 2012-2020 by Jeff Tranter <tranter@pobox.com>
+Copyright (C) 2012-2021 by Jeff Tranter <tranter@pobox.com>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -96,6 +96,12 @@ BASIC: I
 Jump to the Applesoft or OSI BASIC cold start entry point (address
 $E000/$BD11). This will typically overwrite JMON.
 
+S RECORD LOADER: J
+
+Load a Motorola hex (RUN or S record) format file into memory. Exits
+if <ESC> is received at any time or after an S9 record is received.
+Executes the loaded code if the start address is non-zero.
+
 CHECKSUM: K <START> <END>
 
 Calculate a 16-bit checksum of memory from addresses START to END.
@@ -184,6 +190,12 @@ VERIFY: V <START> <END> <DEST>
 Verify that memory from start to end matches memory at destination.
 Displays any mismatch. Prompts after each mismatch whether to
 continue.
+
+S RECORD WRITE: W <START> <END> <GO>
+
+Outputs a Motorola hex (RUN or S record) format file from memory.
+Range of memory is from <START> to <END> with the go or execution
+start address <GO>.
 
 WOZ MON: $
 
