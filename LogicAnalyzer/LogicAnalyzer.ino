@@ -8,13 +8,6 @@
    Copyright (c) 2021 by Jeff Tranter <tranter@pobox.com>
 
 
-  Possible enhancements:
-  - Qualify trigger to be on address read or write.
-  - Trigger on data or control line state.
-  - Trigger on state of SPARE1 or SPARE2 pin
-  - Disassemble 65C02 instructions.
-
-
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
@@ -35,6 +28,10 @@
 // able to go up to at least 30,000 before running out of memory.
 #define BUFFSIZE 5000
 
+// Uncomment this to enable disassembly of 65C02 op codes.
+// Comment out to support only standard 6502 instructions.
+//#define D65C02
+
 // Some pin numbers
 #define PHI2 2
 #define RESET 5
@@ -42,23 +39,80 @@
 #define NMI 33
 #define BUTTON 31
 
-const char *versionString = "6502 Logic Analyzer version 0.2 by Jeff Tranter <tranter@pobox.com>";
+#ifdef D65C02
+const char *versionString = "65C02 Logic Analyzer version 0.23 by Jeff Tranter <tranter@pobox.com>";
+#else
+const char *versionString = "6502 Logic Analyzer version 0.23 by Jeff Tranter <tranter@pobox.com>";
+#endif // D65C02
+
+// Macros
+#define WAIT_PHI2_LOW while (digitalReadFast(PHI2) == HIGH) ;
+#define WAIT_PHI2_HIGH while (digitalReadFast(PHI2) == LOW) ;
+
+// Type definitions
+typedef enum trigger_t { tr_address, tr_data, tr_reset, tr_irq, tr_nmi, tr_spare1, tr_spare2, tr_none } trigger_t;
+typedef enum cycle_t { tr_read, tr_write, tr_either } access_t;
 
 // Global variables
 uint32_t control[BUFFSIZE];           // Recorded control line data
 uint32_t address[BUFFSIZE];           // Recorded address data
 uint32_t data[BUFFSIZE];              // Recorded data lines
-uint32_t triggerAddress;              // Address to trigger on
-uint32_t triggerBits;                 // GPIO bit pattern to trigger on
-uint32_t triggerMask;                 // bitmask of GPIO bits
-uint32_t addressBits;                 // Current address read
-int samples = 20;                     // Number of samples to record (up to BUFFSIZE)
-bool freerun = false;                 // Indicates trigger or free-run mode (no trigger)
+uint32_t triggerAddress;              // Address or data to trigger on
+uint32_t aTriggerBits;                // GPIO bit pattern to trigger address on
+uint32_t aTriggerMask;                // bitmask of GPIO address bits
+uint32_t cTriggerBits;                // GPIO bit pattern to trigger control on
+uint32_t cTriggerMask;                // bitmask of GPIO control bits
+uint32_t dTriggerBits;                // GPIO bit pattern to trigger data on
+uint32_t dTriggerMask;                // bitmask of GPIO data bits
+int samples = 20;                     // Total number of samples to record (up to BUFFSIZE)
+int pretrigger = 3;                   // Number of samples to record before trigger (up to samples)
+int triggerPoint = 0;                 // Sample in buffer corresponding to trigger point
+trigger_t triggerMode = tr_address;   // Type of trigger
+cycle_t triggerCycle = tr_either;     // Trigger on read, write, or either
+bool triggerLevel = false;            // Trigger level (false=low, true=high);
 volatile bool triggerPressed = false; // Set by hardware trigger button
 
+#ifdef D65C02
+// Instructions for 6502 disassembler.
+const char *opcodes[256] = {
+  "BRK", "ORA (nn,X)", "?", "?", "TSB nn", "ORA nn", "ASL nn", "RMB0 nn",
+  "PHP", "ORA #nn", "ASLA", "?", "TSB XXXX", "ORA nn", "ASL nn", "BBR0 nn",
+  "BPL nn", "ORA (nn),Y", "ORA (nn)", "?", "TRB nn", "ORA nn,X", "ASL nn,X", "RMB1 nn",
+  "CLC", "ORA nn,Y", "INCA", "?", "TRB nn", "ORA nn,X", "ASL nn,X", "BBR1 nn",
+  "JSR nn", "AND (nn,X)", "?", "?", "BIT nn", "AND nn", "ROL nn", "RMB2 nn",
+  "PLP", "AND #nn", "ROLA", "?", "BIT nn", "AND nn", "ROL nn", "BBR2 nn",
+  "BMI nn", "AND (nn),Y", "AND (nn)", "?", "BIT nn,X", "AND nn,X", "ROL nn,X", "RMB3 nn",
+  "SEC", "AND nn,Y", "DECA", "?", "BIT nn,X", "AND nn,X", "ROL nn,X", "BBR3 nn",
+  "RTI", "EOR (nn,X)", "?", "?", "?", "EOR nn", "LSR nn", "RMB4 nn",
+  "PHA", "EOR #nn", "LSRA", "?", "JMP nn", "EOR nn", "LSR nn", "BBR4 nn",
+  "BVC nn", "EOR (nn),Y", "EOR (nn)", "?", "?", "EOR nn,X", "LSR nn,X", "RMB5 nn",
+  "CLI", "EOR nn,Y", "PHY", "?", "?", "EOR nn,X", "LSR nn,X", "BBR5 nn",
+  "RTS", "ADC (nn,X)", "?", "?", "STZ nn", "ADC nn", "ROR nn", "RMB6 nn",
+  "PLA", "ADC #nn", "RORA", "?", "JMP (nn)", "ADC nn", "ROR nn", "BBR6 nn",
+  "BVS nn", "ADC (nn),Y", "ADC (nn)", "?", "STZ nn,X", "ADC nn,X", "ROR nn,X", "RMB7 nn",
+  "SEI", "ADC nn,Y", "PLY", "?", "JMP (nn,X)", "ADC nn,X", "ROR nn,X", "BBR7 nn",
+  "BRA nn", "STA (nn,X)", "?", "?", "STY nn", "STA nn", "STX nn", "SMB0 nn",
+  "DEY", "BIT #nn", "TXA", "?", "STY nn", "STA nn", "STX nn", "BBS0 nn",
+  "BCC nn", "STA (nn),Y", "STA (nn)", "?", "STY nn,X", "STA nn,X", "STX (nn),Y", "SMB1 nn",
+  "TYA", "STA nn,Y", "TXS", "?", "STZ nn", "STA nn,X", "STZ nn,X", "BBS1 nn",
+  "LDY #nn", "LDA (nn,X)", "LDX #nn", "?", "LDY nn", "LDA nn", "LDX nn", "SMB2 nn",
+  "TAY", "LDA #nn", "TAX", "?", "LDY nn", "LDA nn", "LDX nn", "BBS2 nn",
+  "BCS nn", "LDA (nn),Y", "LDA (nn)", "?", "LDY nn,X", "LDA nn,X", "LDX (nn),Y", "SMB3 nn",
+  "CLV", "LDA nn,Y", "TSX", "?", "LDY nn,X", "LDA nn,X", "LDX nn,Y", "BBS3 nn",
+  "CPY #nn", "CMP (nn,X)", "?", "?", "CPY nn", "CMP nn", "DEC nn", "SMB4 nn",
+  "INY", "CMP #nn", "DEX", "WAI", "CPY nn", "CMP nn", "DEC nn", "BBS4 nn",
+  "BNE nn", "CMP (nn),Y", "CMP (nn)", "?", "?", "CMP nn,X", "DEC nn,X", "SMB5 nn",
+  "CLD", "CMP nn,Y", "PHX", "STP", "?", "CMP nn,X", "DEC nn,X", "BBS5 nn",
+  "CPX #nn", "SBC (nn,X)", "?", "?", "CPX nn", "SBC nn", "INC nn", "SMB6 nn",
+  "INX", "SBC #nn", "NOP", "?", "CPX nn", "SBC nn", "INC nn", "BBS6 nn",
+  "BEQ nn", "SBC (nn),Y", "SBC (nn)", "?", "?", "SBC nn,X", "INC nn,X", "SMB7 nn",
+  "SED", "SBC nn,Y", "PLX", "?", "?", "SBC nn,X", "INC nn,X", "BBS7 nnnn"
+};
+
+#else
 
 // Instructions for 6502 disassembler.
-const char *opcodes[] = {
+const char *opcodes[256] = {
   "BRK", "ORA (nn,X)", "?", "?", "?", "ORA nn", "ASL nn", "?",
   "PHP", "ORA #nn", "ASLA", "?", "?", "ORA nnnn", "ASL nnnn", "?",
   "BPL nn", "ORA (nn),Y", "?", "?", "?", "ORA nn,X", "ASL nn,X", "?",
@@ -92,7 +146,7 @@ const char *opcodes[] = {
   "BEQ nn", "SBC (nn),Y", "?", "?", "?", "SBC nn,X", "INC nn,X", "?",
   "SED", "SBC nnnn,Y", "?", "?", "?", "SBC nnnn,X", "INC nnnn,X", "?"
 };
-
+#endif // 65C02
 
 // Startup function
 void setup() {
@@ -118,7 +172,7 @@ void setup() {
 
   Serial.setTimeout(60000);
   Serial.println(versionString);
-  Serial.println("Type help or ? for help.");
+  Serial.println("Type h or ? for help.");
 }
 
 
@@ -133,35 +187,103 @@ void triggerButton()
 void help()
 {
   Serial.println(versionString);
-  Serial.print("Trigger address: ");
-  if (freerun) {
-    Serial.println("none (freerun)");
-  } else {
-    Serial.println(triggerAddress, HEX);
+  Serial.print("Trigger: ");
+  switch (triggerMode) {
+    case tr_address:
+      Serial.print("on address ");
+      Serial.print(triggerAddress, HEX);
+      switch (triggerCycle) {
+        case tr_read:
+          Serial.println(" read");
+          break;
+        case tr_write:
+          Serial.println(" write");
+          break;
+        case tr_either:
+          Serial.println(" read or write");
+          break;
+      }
+      break;
+    case tr_data:
+      Serial.print("on data ");
+      Serial.print(triggerAddress, HEX);
+      switch (triggerCycle) {
+        case tr_read:
+          Serial.println(" read");
+          break;
+        case tr_write:
+          Serial.println(" write");
+          break;
+        case tr_either:
+          Serial.println(" read or write");
+          break;
+      }
+      break;
+    case tr_reset:
+      Serial.print("on /RESET ");
+      Serial.println(triggerLevel ? "high" : "low");
+      break;
+    case tr_irq:
+      Serial.print("on /IRQ ");
+      Serial.println(triggerLevel ? "high" : "low");
+      break;
+    case tr_nmi:
+      Serial.print("on /NMI ");
+      Serial.println(triggerLevel ? "high" : "low");
+      break;
+    case tr_spare1:
+      Serial.print("on SPARE1 ");
+      Serial.println(triggerLevel ? "high" : "low");
+      break;
+    case tr_spare2:
+      Serial.print("on SPARE2 ");
+      Serial.println(triggerLevel ? "high" : "low");
+      break;
+    case tr_none:
+      Serial.println("none (freerun)");
+      break;
   }
+
   Serial.print("Sample buffer size: ");
   Serial.println(samples);
+  Serial.print("Pretrigger samples: ");
+  Serial.println(pretrigger);
   Serial.println("Commands:");
-  Serial.println("  s[amples] <number>        - Set number of samples");
-  Serial.println("  t[rigger] <address>|none  - Set trigger address");
-  Serial.println("  g[o]                      - Start analyzer");
-  Serial.println("  l[ist]                    - List samples");
-  Serial.println("  e[xport]                  - Export samples as CSV");
-  Serial.println("  w[write]                  - Write data to SD card");
-  Serial.println("  h[elp] or ?               - Show command usage");
+  Serial.println("s <number>           - Set number of samples");
+  Serial.println("p <samples>          - Set pre-trigger samples");
+  Serial.println("t a <address> [r|w]  - Trigger on address");
+  Serial.println("t d <data> [r|w]     - Trigger on data");
+  Serial.println("t reset 0|1          - Trigger on /RESET level");
+  Serial.println("t irq 0|1            - Trigger on /IRQ level");
+  Serial.println("t nmi 0|1            - Trigger on /NMI level");
+  Serial.println("t spare1 0|1         - Trigger on SPARE1 level");
+  Serial.println("t spare2 0|1         - Trigger on SPARE2 level");
+  Serial.println("t none               - Trigger freerun");
+  Serial.println("g                    - Go/start analyzer");
+  Serial.println("l [start] [end]      - List samples");
+  Serial.println("e                    - Export samples as CSV");
+  Serial.println("w                    - Write data to SD card");
+  Serial.println("h or ?               - Show command usage");
 }
 
 
-// List recorded data.
-void list(Stream &stream)
+// List recorded data from start to end.
+void list(Stream &stream, int start, int end)
 {
   char output[50]; // Holds output string
 
+  int first = (triggerPoint - pretrigger + samples) % samples;
+  int last = (triggerPoint - pretrigger + samples - 1) % samples;
+
   // Display data
-  for (int i = 0; i < samples; i++) {
+  int i = first;
+  int j = 0;
+  while (true) {
     char cycle;
     const char *opcode;
     const char *comment;
+
+    if ((j >= start) && (j <= end)) {
 
     // SYNC high indicates opcode/instruction fetch, otherwise show as read or
     // write.
@@ -209,11 +331,24 @@ void list(Stream &stream)
       comment = "";
     }
 
+    // Indicate when trigger happened
+    if (i == triggerPoint) {
+      comment = "<--- TRIGGER ----";
+    }
+
     sprintf(output, "%04lX  %c  %02lX  %-12s  %s",
             address[i], cycle, data[i], opcode, comment
            );
 
     stream.println(output);
+    }
+
+    if (i == last) {
+      break;
+    }
+
+    i = (i + 1) % samples;
+    j++;
   }
 }
 
@@ -224,8 +359,13 @@ void exportCSV(Stream &stream)
   // Output header
   stream.println("Index,SYNC,R/W,/RESET,/IRQ,/NMI,Address,Data");
 
+  int first = (triggerPoint - pretrigger + samples) % samples;
+  int last = (triggerPoint - pretrigger + samples - 1) % samples;
+
   // Display data
-  for (int i = 0; i < samples; i++) {
+  int i = first;
+  int j = 0;
+  while (true) {
     char output[50]; // Holds output string
     bool sync = control[i] & 0x10;
     bool rw = control[i] & 0x08;
@@ -234,7 +374,7 @@ void exportCSV(Stream &stream)
     bool nmi = control[i] & 0x01;
 
     sprintf(output, "%d,%c,%c,%c,%c,%c,%04lX,%02lX",
-            i,
+            j,
             sync ? '1' : '0',
             rw ? '1' : '0',
             reset ? '1' : '0',
@@ -245,6 +385,13 @@ void exportCSV(Stream &stream)
            );
 
     stream.println(output);
+
+    if (i == last) {
+      break;
+    }
+
+    i = (i + 1) % samples;
+    j++;
   }
 }
 
@@ -285,7 +432,7 @@ void writeSD()
   if (file) {
     Serial.print("Writing ");
     Serial.println(TXT_FILE);
-    list(file);
+    list(file, 0, samples - 1);
     file.close();
   } else {
     Serial.print("Unable to write ");
@@ -297,109 +444,169 @@ void writeSD()
 // Start recording.
 void go()
 {
-  triggerPressed = false;
+  // Scramble the trigger address, control, and data lines to match what we will read on the ports.
+  if (triggerMode == tr_address) {
+    // GPIO port 6 pins:
+    // GPIO:   31  30  29  28  27  26  25  24  23  22  21  20  19  18  17  16  15  14  13  12  11  10  09  08  07  06  05  04  03  02  01  00
+    // 6502:  A15 A14  XXX SP1 A09 A08 A11 A10 A04 A05 XXX XXX A03 A02 A06 A07 XXX XXX A13 A12 XXX XXX XXX XXX XXX XXX XXX XXX A00 A01 XXX XXX
+    aTriggerBits = ((triggerAddress & 0x0001) << (3 - 0)) // A0
+                   + ((triggerAddress & 0x0002) << (2 - 1)) // A1
+                   + ((triggerAddress & 0x0004) << (18 - 2)) // A2
+                   + ((triggerAddress & 0x0008) << (19 - 3)) // A3
+                   + ((triggerAddress & 0x0010) << (23 - 4)) // A4
+                   + ((triggerAddress & 0x0020) << (22 - 5)) // A5
+                   + ((triggerAddress & 0x0040) << (17 - 6)) // A6
+                   + ((triggerAddress & 0x0080) << (16 - 7)) // A7
+                   + ((triggerAddress & 0x0100) << (26 - 8)) // A8
+                   + ((triggerAddress & 0x0200) << (27 - 9)) // A9
+                   + ((triggerAddress & 0x0400) << (24 - 10)) // A10
+                   + ((triggerAddress & 0x0800) << (25 - 11)) // A11
+                   + ((triggerAddress & 0x1000) << (12 - 12)) // A12
+                   + ((triggerAddress & 0x2000) << (13 - 13)) // A13
+                   + ((triggerAddress & 0x4000) << (30 - 14)) // A14
+                   + ((triggerAddress & 0x8000) << (31 - 15)); // A15
+    aTriggerMask = 0b11001111110011110011000000001100;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
 
-  // Scramble the trigger address to match what we will read on the
-  // GPIO pins:
-  // GPIO:  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
-  // 6502:  15 14 XX XX 09 08 11 10 04 05 XX XX 03 02 06 07 XX XX 13 12 XX XX XX XX XX XX XX XX 00 01 XX XX
-
-  triggerBits = ((triggerAddress & 0x0001) << (3 - 0)) // A0
-                + ((triggerAddress & 0x0002) << (2 - 1)) // A1
-                + ((triggerAddress & 0x0004) << (18 - 2)) // A2
-                + ((triggerAddress & 0x0008) << (19 - 3)) // A3
-                + ((triggerAddress & 0x0010) << (23 - 4)) // A4
-                + ((triggerAddress & 0x0020) << (22 - 5)) // A5
-                + ((triggerAddress & 0x0040) << (17 - 6)) // A6
-                + ((triggerAddress & 0x0080) << (16 - 7)) // A7
-                + ((triggerAddress & 0x0100) << (26 - 8)) // A8
-                + ((triggerAddress & 0x0200) << (27 - 9)) // A9
-                + ((triggerAddress & 0x0400) << (24 - 10)) // A10
-                + ((triggerAddress & 0x0800) << (25 - 11)) // A11
-                + ((triggerAddress & 0x1000) << (12 - 12)) // A12
-                + ((triggerAddress & 0x2000) << (13 - 13)) // A13
-                + ((triggerAddress & 0x4000) << (30 - 14)) // A14
-                + ((triggerAddress & 0x8000) << (31 - 15)); // A15
-
-  triggerMask = 0b11001111110011110011000000001100;
-
-  if (!freerun) { // Wait for trigger mode
-
-    // Wait for trigger condition (trigger address).
-    Serial.print("Waiting for trigger address ");
-    Serial.print(triggerAddress, HEX);
-    Serial.println("...");
-    Serial.flush();
-
-    digitalWriteFast(CORE_LED0_PIN, HIGH); // Indicates waiting for trigger
-
-    while (true) {
-
-      // Wait for PHI2 to go from low to high
-      while (digitalReadFast(PHI2) == HIGH)
-        ;
-      while (digitalReadFast(PHI2) == LOW)
-        ;
-
-      // Read address lines
-      addressBits = GPIO6_PSR;
-
-      // Break out of loop if trigger address seen or trigger button pressed
-      if (((addressBits & triggerMask) == (triggerBits & triggerMask)) || triggerPressed) {
-        // Read control and data lines to get our first sample
-        address[0] = addressBits;
-        control[0] = GPIO9_PSR;
-        // Wait for PHI2 to go from high to low
-        while (digitalReadFast(PHI2) == HIGH)
-          ;
-        // Read data lines
-        data[0] = GPIO7_PSR;
-        // Exit loop
-        break;
-      }
+    // Check for r/w qualifer
+    if (triggerCycle == tr_read) {
+      cTriggerBits = 0b00000000000000000000000001000000;
+      cTriggerMask = 0b00000000000000000000000001000000;
+    } else if (triggerCycle == tr_write) {
+      cTriggerBits = 0b00000000000000000000000000000000;
+      cTriggerMask = 0b00000000000000000000000001000000;
+    } else {
+      cTriggerBits = 0;
+      cTriggerMask = 0;
     }
 
-    digitalWriteFast(CORE_LED0_PIN, LOW); // Indicates received trigger
+  } else if (triggerMode == tr_data) {
+    // GPIO port 7 pins:
+    // GPIO:   31  30  29  28  27  26  25  24  23  22  21  20  19  18  17  16  15  14  13  12  11  10  09  08  07  06  05  04  03  02  01  00
+    // 6502:  XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX D01 D02 XXX XXX XXX D07 D03 D00 SP2 XXX XXX XXX XXX XXX LED D05 D06 D04
+    dTriggerBits = ((triggerAddress & 0x0001) << (10 - 0)) // D0
+                   + ((triggerAddress & 0x0002) << (17 - 1)) // D1
+                   + ((triggerAddress & 0x0004) << (16 - 2)) // D2
+                   + ((triggerAddress & 0x0008) << (11 - 3)) // D3
+                   + ((triggerAddress & 0x0010) >> (4 - 0)) // D4
+                   + ((triggerAddress & 0x0020) >> (5 - 2)) // D5
+                   + ((triggerAddress & 0x0040) >> (6 - 1)) // D6
+                   + ((triggerAddress & 0x0080) << (12 - 7)); // D7
+    dTriggerMask = 0b00000000000000110001110000000111;
+    aTriggerBits = 0;
+    aTriggerMask = 0;
 
-  } else { // Freerun mode, immediately read first sample
+    // Check for r/w qualifer
+    if (triggerCycle == tr_read) {
+      cTriggerBits = 0b00000000000000000000000001000000;
+      cTriggerMask = 0b00000000000000000000000001000000;
+    } else if (triggerCycle == tr_write) {
+      cTriggerBits = 0b00000000000000000000000000000000;
+      cTriggerMask = 0b00000000000000000000000001000000;
+    } else {
+      cTriggerBits = 0;
+      cTriggerMask = 0;
+    }
 
-    // Wait for PHI2 to go from low to high
-    while (digitalReadFast(PHI2) == HIGH)
-      ;
-    while (digitalReadFast(PHI2) == LOW)
-      ;
-
-    // Read address and control lines
-    control[0] = GPIO9_PSR;
-    address[0] = GPIO6_PSR;
-
-    // Wait for PHI2 to go from high to low
-    while (digitalReadFast(PHI2) == HIGH)
-      ;
-
-    // Read data lines
-    data[0] = GPIO7_PSR;
+  } else if (triggerMode == tr_reset) {
+    // GPIO port 9 pins:
+    // GPIO:   31  30  29  28  27  26  25  24  23  22  21  20  19  18  17  16  15  14  13  12  11  10  09  08  07  06  05  04  03  02  01  00
+    // 6502:  IRQ XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX RST NMI R/W SYN PH2 XXX XXX XXX XXX
+    cTriggerBits = triggerLevel ? 0b00000000000000000000000100000000 : 0;
+    cTriggerMask = 0b00000000000000000000000100000000;
+    aTriggerBits = 0;
+    aTriggerMask = 0;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
+  } else if (triggerMode == tr_irq) {
+    cTriggerBits = triggerLevel ? 0b10000000000000000000000000000000 : 0;
+    cTriggerMask = 0b10000000000000000000000000000000;
+    aTriggerBits = 0;
+    aTriggerMask = 0;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
+  } else if (triggerMode == tr_nmi) {
+    cTriggerBits = triggerLevel ? 0b00000000000000000000000010000000 : 0;
+    cTriggerMask = 0b00000000000000000000000010000000;
+    aTriggerBits = 0;
+    aTriggerMask = 0;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
+  } else if (triggerMode == tr_spare1) {
+    aTriggerBits = triggerLevel ? 0b00010000000000000000000000000000 : 0;
+    aTriggerMask = 0b00010000000000000000000000000000;
+    cTriggerBits = 0;
+    cTriggerMask = 0;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
+  } else if (triggerMode == tr_spare2) {
+    dTriggerBits = triggerLevel ? 0b00000000000000000000001000000000 : 0;
+    dTriggerMask = 0b00000000000000000000001000000000;
+    aTriggerBits = 0;
+    aTriggerMask = 0;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
+  } else if (triggerMode == tr_none) {
+    aTriggerBits = 0;
+    aTriggerMask = 0;
+    dTriggerBits = 0;
+    dTriggerMask = 0;
+    cTriggerBits = 0;
+    cTriggerMask = 0;
   }
 
-  // Trigger received, now fill buffer with samples.
-  for (int i = 1; i < samples; i++) {
+  Serial.println("Waiting for trigger...");
+
+  triggerPressed = false; // Status of trigger button
+
+  digitalWriteFast(CORE_LED0_PIN, HIGH); // Indicates waiting for trigger
+
+  int i = 0; // Index into data buffers
+  int samplesTaken = 0; // Number of samples taken
+  bool triggered = false; // Set when triggered
+
+  while (true) {
 
     // Wait for PHI2 to go from low to high
-    while (digitalReadFast(PHI2) == HIGH)
-      ;
-    while (digitalReadFast(PHI2) == LOW)
-      ;
+    WAIT_PHI2_LOW;
+    WAIT_PHI2_HIGH;
 
     // Read address and control lines
     control[i] = GPIO9_PSR;
     address[i] = GPIO6_PSR;
 
     // Wait for PHI2 to go from high to low
-    while (digitalReadFast(PHI2) == HIGH)
-      ;
+    WAIT_PHI2_HIGH;
+    WAIT_PHI2_LOW;
 
     // Read data lines
     data[i] = GPIO7_PSR;
+
+    // Set triggered flag if trigger button pressed or trigger seen
+    // If triggered, increment buffer index
+    if (!triggered) {
+      if (triggerPressed ||
+        (((address[i] & aTriggerMask) == (aTriggerBits & aTriggerMask)) &&
+        ((data[i] & dTriggerMask) == (dTriggerBits & dTriggerMask)) &&
+        ((control[i] & cTriggerMask) == (cTriggerBits & cTriggerMask)))) {
+        triggered = true;
+        triggerPoint = i;
+        digitalWriteFast(CORE_LED0_PIN, LOW); // Indicates received trigger
+      }
+    }
+
+    // Count number of samples taken after trigger
+    if (triggered) {
+      samplesTaken++;
+    }
+
+    // Exit when buffer is full of samples
+    if (samplesTaken >= (samples - pretrigger)) {
+      break;
+    }
+
+    i = (i + 1) % samples; // Increment index, wrapping around at end for circular buffer
   }
 
   Serial.print("Data recorded (");
@@ -485,54 +692,150 @@ void loop() {
 
     Serial.println("");
 
-    if ((cmd == "help") || (cmd == "?") || (cmd == "h")) {
+    // Help
+    if ((cmd == "h") || (cmd == "?")) {
       help();
 
-    } else if (cmd.startsWith("samples ") || cmd.startsWith("s ")) {
+      // Samples
+    } else if (cmd.startsWith("s ")) {
       int n = 0;
-      if (cmd.startsWith("samples ")) {
-        n = cmd.substring(8).toInt();
-      }  else if (cmd.startsWith("s ")) {
-        n = cmd.substring(2).toInt();
-      }
+      n = cmd.substring(2).toInt();
 
-      if ((n >= 0) && (n <= BUFFSIZE)) {
+      if ((n > 0) && (n <= BUFFSIZE)) {
         samples = n;
+        memset(control, 0, sizeof(control)); // Clear existing data
+        memset(address, 0, sizeof(address));
+        memset(data, 0, sizeof(data));
       } else {
         Serial.print("Invalid samples, must be between 1 and ");
         Serial.print(BUFFSIZE);
         Serial.println(".");
       }
 
-    } else if ((cmd == "t none") || (cmd == "trigger none")) {
-      freerun = true;
-    } else if (cmd.startsWith("trigger ") || cmd.startsWith("t ")) {
+      // Pretrigger
+    } else if (cmd.startsWith("p ")) {
       int n = 0;
-      if (cmd.startsWith("trigger ")) {
-        n = strtol(cmd.substring(8).c_str(), NULL, 16);
-      } else if (cmd.startsWith("t ")) {
-        n = strtol(cmd.substring(2).c_str(), NULL, 16);
+      n = cmd.substring(2).toInt();
+
+      if ((n >= 0) && (n <= samples)) {
+        pretrigger = n;
+      } else {
+        Serial.print("Invalid samples, must be between 0 and ");
+        Serial.print(samples);
+        Serial.println(".");
       }
 
+      // Trigger
+    } else if (cmd == "t none") {
+      triggerMode = tr_none;
+    } else if (cmd == "t reset 0") {
+      triggerMode = tr_reset;
+      triggerLevel = false;
+    } else if (cmd == "t reset 1") {
+      triggerMode = tr_reset;
+      triggerLevel = true;
+    } else if (cmd == "t irq 0") {
+      triggerMode = tr_irq;
+      triggerLevel = false;
+    } else if (cmd == "t irq 1") {
+      triggerMode = tr_irq;
+      triggerLevel = true;
+    } else if (cmd == "t nmi 0") {
+      triggerMode = tr_nmi;
+      triggerLevel = false;
+    } else if (cmd == "t nmi 1") {
+      triggerMode = tr_nmi;
+      triggerLevel = true;
+    } else if (cmd == "t spare1 0") {
+      triggerMode = tr_spare1;
+      triggerLevel = false;
+    } else if (cmd == "t spare1 1") {
+      triggerMode = tr_spare1;
+      triggerLevel = true;
+    } else if (cmd == "t spare2 0") {
+      triggerMode = tr_spare2;
+      triggerLevel = false;
+    } else if (cmd == "t spare2 1") {
+      triggerMode = tr_spare2;
+      triggerLevel = true;
+    } else if (cmd.startsWith("t a ")) {
+      int n = strtol(cmd.substring(4, 8).c_str(), NULL, 16);
       if ((n >= 0) && (n <= 0xffff)) {
         triggerAddress = n;
-        freerun = false;
+        triggerMode = tr_address;
+        if ((cmd.length() == 10) && cmd.endsWith('r')) {
+          triggerCycle = tr_read;
+        } else if ((cmd.length() == 10) && cmd.endsWith('w')) {
+          triggerCycle = tr_write;
+        } else {
+          triggerCycle = tr_either;
+        }
+      } else {
+        Serial.println("Invalid address, must be between 0 and FFFF.");
+      }
+    } else if (cmd.startsWith("t d ")) {
+      int n = strtol(cmd.substring(4, 6).c_str(), NULL, 16);
+      if ((n >= 0) && (n <= 0xff)) {
+        triggerAddress = n;
+        triggerMode = tr_data;
+        if ((cmd.length() == 8) && cmd.endsWith('r')) {
+          triggerCycle = tr_read;
+        } else if ((cmd.length() == 8) && cmd.endsWith('w')) {
+          triggerCycle = tr_write;
+        } else {
+          triggerCycle = tr_either;
+        }
       } else {
         Serial.println("Invalid address, must be between 0 and FFFF.");
       }
 
-    } else if ((cmd == "go") || (cmd == "g")) {
+      // Go
+    } else if (cmd == "g") {
       go();
 
-    } else if ((cmd == "list") || (cmd == "l")) {
-      list(Serial);
+      // List
+    } else if (cmd == "l") {
+      list(Serial, 0, samples - 1);
+    } else if (cmd.startsWith("l ")) {
+      if (cmd.indexOf(" ") == cmd.lastIndexOf(" ")) {
+        // l <start>
+        int start = cmd.substring(2).toInt();
+        if ((start < 0) || (start >= samples)) {
+          Serial.print("Invalid start, must be between 0 and ");
+          Serial.print(samples - 1);
+          Serial.println(".");
+        } else {
+          list(Serial, start, samples - 1);
+        }
 
-    } else if ((cmd == "export") || (cmd == "e")) {
+      } else {
+        // l start end
+        int start = cmd.substring(2).toInt();
+        int end = cmd.substring(cmd.lastIndexOf(" ")).toInt();
+        if ((start < 0) || (start >= samples)) {
+          Serial.print("Invalid start, must be between 0 and ");
+          Serial.print(samples - 1);
+          Serial.println(".");
+        } else if ((end < start) || (end >= samples)) {
+          Serial.print("Invalid end, must be between ");
+          Serial.print(start);
+          Serial.print(" and ");
+          Serial.print(samples - 1);
+          Serial.println(".");
+        } else {
+          list(Serial, start, end);
+        }
+      }
+
+      // Export
+    } else if (cmd == "e") {
       exportCSV(Serial);
 
-    } else if ((cmd == "write") || (cmd == "w")) {
+      // Write
+    } else if (cmd == "w") {
       writeSD();
 
+      // Invalid command
     } else {
       if (cmd != "") {
         Serial.print("Invalid command: '");
