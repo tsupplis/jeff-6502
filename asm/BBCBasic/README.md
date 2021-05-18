@@ -1,20 +1,51 @@
-This is a port of BBC Basic 2 to the Ohio Scientific C1P/Superboard 2
-(and hopefully later, more machines).
+This is a port of BBC Basic 2 to my 6502 Single Board Computer (SBC).
 
 I started with a binary, disassembled it, and got it to assemble to
 the same binary code with the CC65 cross-assembler. Then, comments
 were added from the original source that was written as in-line
 assembler in BBC Basic.
 
-The system calls (MOS) from the Acorn/BBC platform need to be emulated
-or stubbed out for the other platforms.
+The system calls (MOS) from the Acorn/BBC platform were emulated
+or stubbed out for the SBC platform.
 
-It is still a work in progress.
+Support for these keywords was removed to get the code to fit in a 16K
+ROM (they would not work anyway due to hardware limitations):
 
-TODO:
-- Implement OS calls
-- Test and debug (initially use my simulator)
-- See if could fit in ROM (need to get all code to fit in 16K).
+ADVAL BGET BPUT CHAIN CLG CLOSE COLOUR DRAW ENVELOPE EOF EXT GCOL LOAD
+MODE MOVE OPENIN OPENOUT OPENUP PLOT POINT PTR SAVE SOUND
+
+Acorn-specific screen output (VDU) functions are not implemented. Any
+commands for file i/o will not work, as well as sound or graphics.
+
+For more information on the Basic interpreter, you can find many
+references on the Internet to the Acorn computer and BBC Basic.
+
+Sample session:
+
+```
+BBC BASIC v2 for 6502 SBC
+>10 FOR I = 1 TO 10
+>20 PRINT I
+>30 NEXT I
+>40 END
+>LIST
+   10 FOR I = 1 TO 10
+   20 PRINT I
+   30 NEXT I
+   40 END
+>RUN
+         1
+         2
+         3
+         4
+         5
+         6
+         7
+         8
+         9
+        10
+>
+```
 
 References:
 
