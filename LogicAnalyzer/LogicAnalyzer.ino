@@ -1,6 +1,6 @@
 /*
 
-  Logic Analyzer for 6502, 6700, 6809, or Z80 microprocessors based on a
+  Logic Analyzer for 6502, 6800, 6809, or Z80 microprocessors based on a
   Teensy 4.1 microcontroller.
 
   See https://github.com/jefftranter/6502/tree/master/LogicAnalyzer
@@ -546,7 +546,7 @@ void list(Stream &stream, int start, int end)
         } else {
           if (control[i] & 0x08) {
             cycle = "R";
-            opcode = opcodes_6809[data[i]];
+            opcode = opcodes_6800[data[i]];
           } else {
             cycle = "W";
             opcode = "";
