@@ -1,7 +1,7 @@
 ; Port of Acorn System/Atom MOS System Calls to my 6502
 ; Single Board Computer.
 ;
-; Jeff Tranter <tranter@pobpox.com>
+; Jeff Tranter <tranter@pobox.com>
 ;
 ; Helpful references:
 ; http://mdfs.net/Docs/Comp/Acorn/Atom/MOSEntries
@@ -11,7 +11,7 @@
 ; http://danceswithferrets.org/geekblog/?p=961
 
 ; Memory map:
-; RAM from $0000 to $3FFF
+; RAM from $0000 to $7FFF
 ; BBC Basic and MOS in ROM from $C000 to $FFFF
 
         LF      = $0A           ; Line feed
@@ -62,6 +62,8 @@ _RESET:
         txs
 
 ; Initialize ACIA
+        lda     #$03            ; Reset 6850
+        sta     ACIAControl
         lda     #$15            ; Set ACIA to 8N1 and divide by 16 clock
         sta     ACIAControl
 
@@ -83,7 +85,7 @@ cont:
         jmp     L8000           ; Basic entry point
 
 StartMsg:
-        .byte   "BBC BASIC v2 for 6502 SBC 06-May-2021",CR,LF,0
+        .byte   "BBC BASIC v2 for 6502 SBC 09-Jun-2022",CR,LF,0
 
 ; NMI routine
 _NMI:
@@ -210,7 +212,7 @@ loop:   jsr     OSRDCH          ; Get character
         beq     loop            ; If so, ignore
         cmp     #DEL            ; Delete?
         beq     delete
-        cmp     #DEL            ; Backspace?
+        cmp     #BS             ; Backspace?
         beq     delete
         sta     ($37),Y         ; Save in buffer
         cmp     #CR             ; CR?
