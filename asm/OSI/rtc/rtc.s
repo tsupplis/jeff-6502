@@ -22,10 +22,6 @@
 ; Basic program includes the machine language code and is
 ; self-contained.
 ;
-; The timer hardware is not exactly 10 ms, so the clock is not
-; particularly accurate but could be calibrated in software to improve
-; accuracy.
-;
 ; This version count 100ths of seconds, seconds, minutes, and hours.
 ; Once it runs, it returns and is all interrupt driven.
 ;
@@ -47,9 +43,12 @@
         IRQ     = $01C0 ; IRQ vector
 
 JIFFIES:        .res 1  ; 100ths of seconds
-SECONDS:        .res 1  ; seconds
-MINUTES:        .res 1  ; minutes
-HOURS:          .res 1  ; hours
+SECONDS:        .res 1  ; Seconds
+MINUTES:        .res 1  ; Minutes
+HOURS:          .res 1  ; Hours
+DAY:            .res 1  ; Day of month (1-31)
+MONTH:          .res 1  ; Month (1-12)
+YEAR:           .res 1  ; Last two digits of year
 
 ;
 ; Initialization routine
@@ -59,7 +58,7 @@ INIT:   SEI             ; Mask interrupts
         STA     IRQ     ; Store at interrupt vector
         LDA     #<ISR   ; Low byte
         STA     IRQ+1
-        LDA     #>ISR   ; Hgh byte
+        LDA     #>ISR   ; High byte
         STA     IRQ+2
 
         LDA     #0      ; Set clock values to all zeroes
@@ -67,6 +66,10 @@ INIT:   SEI             ; Mask interrupts
         STA     SECONDS
         STA     MINUTES
         STA     HOURS
+        LDA     #1      ; And date values to all ones
+        STA     DAY
+        STA     MONTH
+        STA     YEAR
 
         LDA     #%00000101 ; Set PIA port A for interrupt when CA1 goes low.
         STA     CREGA   ; Write to control register
@@ -74,54 +77,85 @@ INIT:   SEI             ; Mask interrupts
         CLI             ; Enable interrupts
         RTS             ; Done, return
 
+; Note: The frequency of the 100 Hz timer signal is actually 98.304 Hz
+; so by counting 98 interrupts as a second it runs a little fast. We
+; compensate for this by periodically dropping counts to get a more
+; accurate time. You can adjust these for the actual clock frequency
+; on your machine. Values used here were determined empirically on my
+; machine and gave me a clock accuracy of within one second per day.
+
 ;
 ; Interrupt service routine
 ;
-ISR:    PHA             ; save A
+ISR:    PHA             ; Save A
         BIT     PORTA   ; Clears interrupt
 
-        LDA     JIFFIES ; Increment jiffies counter
-        CLC
-        ADC     #1
+        INC     JIFFIES ; Increment jiffies counter
+        LDA     JIFFIES ; Get current value
+
+        CMP     #98     ; Reached 1 second?
+        BNE     DONE    ; If not, done for now
+
+        LDA     #0      ; Reset jiffies
+        STA     JIFFIES
+        INC     SECONDS ; Increment seconds
+        LDA     SECONDS
+        CMP     #60     ; Reached 1 minute?
+        BNE     DONE    ; If not, done for now
+
+        LDA     #0      ; Reset seconds
+        STA     SECONDS
+        INC     MINUTES ; Increment minutes
+
+; Time adjustment: Every minute drop 16 counts.
+
+        LDA     JIFFIES
+        SEC
+        SBC     #16
         STA     JIFFIES
 
-; Note: Frequency of 100 Hz timer signal is actually 98.304 Hz (+/-
-; depending on crystal). Can tweak the number below if your system is
-; slightly different. Could make a fine adjustment, say every minute
-; or every hour, to make timer even more accurate over the long term.
+        LDA     MINUTES
+        CMP     #60     ; Reached 1 hour?
+        BNE     DONE    ; If not, done for now
 
-        CMP     #98     ; reached 1 second?
-        BNE     DONE    ; if not, done for now
+        LDA     #0      ; Reset minutes
+        STA     MINUTES
+        INC     HOURS   ; Increment hours
 
-        LDA     #0      ; reset jiffies
+; Time adjustment: Every hour drop 24 counts.
+
+        LDA     JIFFIES
+        SEC
+        SBC     #24
         STA     JIFFIES
-        LDA     SECONDS ; increment seconds
-        CLC
-        ADC     #1
-        STA     SECONDS
-        CMP     #60     ; reached 1 minute?
-        BNE     DONE    ; if not, done for now
 
-        LDA     #0      ; reset seconds
-        STA     SECONDS
-        LDA     MINUTES ; increment minutes
-        CLC
-        ADC     #1
-        STA     MINUTES
-        CMP     #60     ; reached 1 hour?
-        BNE     DONE    ; if not, done for now
+        LDA     HOURS
+        CMP     #24     ; Reached 24 hours?
+        BNE     DONE    ; If not, done for now
 
-        LDA     #0      ; reset minutes
-        STA     MINUTES
-        LDA     HOURS   ; increment hours
-        CLC
-        ADC     #1
+        LDA     #0      ; Reset hours
         STA     HOURS
-        CMP     #24     ; reached 24 hours?
-        BNE     DONE    ; if not, done for now
 
-        LDA     #0      ; reset hours
-        STA     HOURS
+        INC     DAY     ; Increment day of month
+        LDY     MONTH   ; Get month
+        DEY             ; Subtract one to get zero-based value for table lookup
+        LDA     DAY     ; Get day
+        CMP     MNTHS,Y ; Compare to number of days in the month
+        BCC     DONE    ; Branch if less
+        LDA     #1      ; Reset day to one
+        STA     DAY
+
+        INC     MONTH   ; Increment month
+        LDA     MONTH
+        CMP     #13     ; Passed the last month?
+        BNE     DONE    ; Branch if not
+        LDA     #1      ; Reset month to one
+        STA     MONTH
+        INC     YEAR    ; Increment the year
 
 DONE:   PLA             ; restore A
         RTI             ; and return
+
+; Lookup table of number of days per month. Does not handle leap years.
+
+MNTHS:  .byte  31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
