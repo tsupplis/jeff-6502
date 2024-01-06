@@ -1,4 +1,4 @@
- Teeny 4.1       6502        6809        Z80         6800
+ Teensy 4.1      6502        6809        Z80         6800
 Port Bit Pin  Signal Pin  Signal Pin  Signal Pin  Signal Pin
 ---- --- ---  ------ ---  ------ ---  ------ ---  ------ ---
  6     3   0   A0      9   A0      8   A0     30   A0      9
@@ -31,7 +31,7 @@ Port Bit Pin  Signal Pin  Signal Pin  Signal Pin  Signal Pin
  7     1  12   D6     27   D6     25   D6     10   D6     27
  7     3  13   (LED)
  7    12  32   D7     26   D7     24   D7     13   D7     26
- 7     9  34   (SPARE2)    (SPARE2)    /INT   16   (SPARE2)
+ 7    29  34   (SPARE2)    (SPARE2)    /INT   16   (SPARE2)
  7    28  35
  7    18  36
  7    19  37
@@ -49,3 +49,7 @@ Port Bit Pin  Signal Pin  Signal Pin  Signal Pin  Signal Pin
  9     7  33   /NMI    6   /NMI    2   /WR    22   /NMI    6
 
  -     -   -   GND  1,21   GND     1   GND    29   GND  1,21
+
+
+Notes:
+On the Z80, a jumper selects between /INT (pin 16) or /NMI (pin 17).
