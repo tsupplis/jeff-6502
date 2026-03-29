@@ -1,4 +1,4 @@
-SUBDIRS = adventure1 adventure2 hello yum
+SUBDIRS = adventure1 adventure2 adventure3 adventure4 hello yum
 
 all:
 	@for i in $(SUBDIRS); do \
@@ -7,5 +7,5 @@ all:
 
 clean:
 	@for i in $(SUBDIRS); do \
-	echo "Clearing in $$i..."; \
+	echo "Cleaning in $$i..."; \
 	(cd "$$i"; $(MAKE) $(MFLAGS) clean); done
