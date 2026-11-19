@@ -1,0 +1,129 @@
+                          A2Pico Cheat Sheet
+                             14 Oct 2026
+                   Jeff Tranter <tranter@pobox.com>
+                See: https://jcm-1.com/product/a2pico/
+
+Programming Pico firmware:
+Remove a2pico from Apple II or power off computer.
+Press and hold BOOTSEL button on Pico.
+Connect Pico to computer via USB. Should detect and mount USB drive.
+Copy .uf2 file to USB drive.
+
+Firmware: A2retroNET-Link Version: 2026-10-03
+---------------------------------------------
+
+Emulates up to eight SmartPort drives using microSD card as well as a
+SuperSerial card (in printer mode). Drives map to slot where installed
+as well as unused slots (2 drives per slot). Supported image types:
+hdv, po, 2mg.
+
+Disable SSC: SSC.HIDE.SYSTEM
+Enable SSC: SSC.SHOW.SYSTEM
+Run config (slot 7): CALL 51184 ($C7F0)
+
+USB accesses microSD card as an SD-card reader.
+To go into SSC mode, put file ATINIT on boot disk.
+On Linux, serial device typically appears as /dev/ttyACM0 and mass
+storage as /dev/sda1.
+Config file is A2retronet.txt on microSD card.
+USB Pwr switch should be set to "off".
+
+Hot keys during boot:
+C   - Invoke configuration program.
+N   - Continue autostart boot with next slot.
+1-8 - Boot drive (as drive 1).
+
+Configuration Program Keys:
+<ESC>      Quit the configuration utility (and boot).
+<SPACE>    Toggle between selecting a drive and selecting a disk image file.
+<LEFT>     Select previous drive or disk image file (or directory).
+<RIGHT>    Select next drive or disk image file (or directory).
+<RETURN>   Insert selected disk image file in selected drive (or enter directory).
+-          Remove disk image file from selected drive.
+/          Go to root directory.
+:          Switch between selecting from the USB key and the microSD card.
+1-8        Directly select a drive.
+0 or A-Z   Directly select a disk image file (or directory) with a
+           matching name.
+Control-E  Edit disk name.
+Control-S  Enter Settings screen.
+?          Show help screen
+
+ProDOS drive mapping for my system:
+Media Slot Drive
+----- ---- -----
+1     7    1
+2     7    2
+3     4    1
+4     4    2
+5     1    1
+6     1    2
+7     2    1
+8     2    2
+(Slot 6 drives 1 and 2 are Disk II controller drives.)
+
+Firmware: A2retroNET-Drive Version: 2026-10-03
+----------------------------------------------
+
+Emulates up to 8 SmartPort drives using microSD card and/or an
+external USB thumb drive.
+Drives map to slot where installed as well as unused slots (2
+drives per slot).
+Use suitable cable to connect to USB key.
+Configuration program is the same as above.
+Config file is A2retronet.txt on microSD card or USB.
+USB Pwr switch should be set to "on".
+
+Firmware: softSP_A2Pico Version: 2026-10-03
+-------------------------------------------
+
+Allows Disk II interface in slot 6 to support SmartPort devices.
+Also supports UniDisk 3.5" 800K drives.
+Install a2pico in slot 7.
+Need Disk II interface card in slot 6.
+Connect SmartPort or UniDisk device to Disk II.
+Warning: Special cable or adaptor is needed if used with a FloppyEmu
+in SmartPort mode, otherwise hardware can be damaged.
+On power up or PR#7 will boot SmartPort device.
+Supports up to four drives, appearing as S7D1, S7D2, S4D1, and S4D2
+
+Firmware: Appli-Card_A2Pico Version: 2026-10-03
+-----------------------------------------------
+
+Emulates a PCPI Appli-Card that contains a Z80 CPU and enables CP/M
+operation.
+Install card in any slot.
+Boot suitable CP/M disk image (must be on storage external to a2pico,
+not on USB or microSD). It can be frustrating to use with only one or
+two 128K floppy drives; hard disk images are much better. You can use
+a second a2pico to provide disk storage.
+Depending on the drivers that are configured, an 80 column card is
+detected and used.
+Some images are in CP/M format and need to be booted directly. Some
+disk images are in ProDOS format.
+
+Firmware: Super-Serial-Card_A2Pico Version: 2026-10-03.uf2
+----------------------------------------------------------
+
+Emulates a Super Serial Card using the USB interface.
+
+Baud rate and other UART settings are meaningless. Hardware handshake
+is not supported. Runs in SSC Printer Mode. To make serial connection,
+after running "PR#7" and "IN#7", type "Control-I 1D" to set Apple side
+to use 7-bit data. On Linux, serial device typically appears as
+/dev/ttyACM0.
+USB Pwr switch should be set to "off".
+
+Firmware: Mouse-Interface_A2Pico Version: 2026-10-03
+----------------------------------------------------
+
+Emulates an Apple II Mouse Interface Card supporting a USB mouse.
+Can install in any slot (slot 4 is most common).
+Should work with any software that supports the Mouse Interface Card.
+Some programs may make use of MouseText characters only available on
+the Apple IIc and some later versions of Apple IIe and IIGS.
+Use suitable cable to connect USB mouse.
+Both left and right USB mouse buttons are mapped to the single
+AppleMouse II button. The middle USB mouse button is mapped to a
+second Apple II mouse button.
+USB Pwr switch should be set to "on".

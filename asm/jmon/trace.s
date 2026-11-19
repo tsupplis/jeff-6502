@@ -1,7 +1,7 @@
 ;
-; 6502 Instruction Trace
+; 6502/65C02 Instruction Trace
 ;
-; Copyright (C) 2012-2019 by Jeff Tranter <tranter@pobox.com>
+; Copyright (C) 2012-2026 by Jeff Tranter <tranter@pobox.com>
 ;
 ; Licensed under the Apache License, Version 2.0 (the "License");
 ; you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@
 ;
 ; A breakpoint (BRK instruction) will display a message and update
 ; the current register values so that it can be traced. This works
-; whether the breakpint address is set using the B command or not.
+; whether the breakpoint address is set using the B command or not.
 ;
 ; The command supports tracing/stepping through ROM as well as RAM.
 ;
@@ -69,7 +69,6 @@
 ; IN - input buffer holding operands
 ; AM - addressing mode (AM_*)
 ; TRACEINST - buffer holding traced instruction
-
 
 ; Trace the next instruction using saved registers. Execute the
 ; instruction, display new registers values. disassemble new current
@@ -299,7 +298,7 @@ TryRTI:
         LDA ADDR+1
         ADC #0                  ; Add any carry
         STA NEXT_PC+1
-        JMP AfterStep           ; We're done
+        JBRA AfterStep          ; We're done
 
 ; RTS - Pop PC. Increment PC to get next PC.
 
@@ -325,7 +324,7 @@ TryRTS:
         LDA ADDR+1
         ADC #0                  ; Add any carry
         STA NEXT_PC+1
-        JMP AfterStep           ; We're done
+        JBRA AfterStep          ; We're done
 
 ; Not a special instruction. We execute it from the buffer.
 
@@ -452,7 +451,7 @@ GetLength:
         INX
         LDA OPCODES1,X          ; Get addressing mode
         STA AM                  ; Store it
-        JMP @AROUND
+        JBRA @AROUND
 @UPPER:
         ASL A                   ; Double it since table is two bytes per entry
         TAX

@@ -1,6 +1,6 @@
 ; Information Routines
 ;
-; Copyright (C) 2012-2021 by Jeff Tranter <tranter@pobox.com>
+; Copyright (C) 2012-2026 by Jeff Tranter <tranter@pobox.com>
 ;
 ; Licensed under the Apache License, Version 2.0 (the "License");
 ; you may not use this file except in compliance with the License.
@@ -84,13 +84,13 @@ Info:
         BNE Next1
         LDX #<TypeAppleIIString
         LDY #>TypeAppleIIString
-        JMP PrintType
+        JBRA PrintType
 Next1:
         CMP #$EA
         BNE Next2
         LDX #<TypeAppleIIplusString
         LDY #>TypeAppleIIplusString
-        JMP PrintType
+        JBRA PrintType
 Next2:
         CMP #$06
         BNE Unknown
@@ -99,13 +99,13 @@ Next2:
         BNE Next3
         LDX #<TypeAppleIIeString
         LDY #>TypeAppleIIeString
-        JMP PrintType
+        JBRA PrintType
 Next3:
         CMP #$00
         BNE Unknown
         LDX #<TypeAppleIIcString
         LDY #>TypeAppleIIcString
-        JMP PrintType
+        JBRA PrintType
 Unknown:
         LDX #<TypeAppleUnknown
         LDY #>TypeAppleUnknown
@@ -136,13 +136,13 @@ PrintType:
         BNE @Try2
         LDX #<Type6502String
         LDY #>Type6502String
-        JMP @PrintCPU
+        JBRA @PrintCPU
 @Try2:
         CMP #2
         BNE @Try3
         LDX #<Type65C02String
         LDY #>Type65C02String
-        JMP @PrintCPU
+        JBRA @PrintCPU
 @Try3:
         CMP #3
         BNE @Invalid
@@ -255,7 +255,7 @@ PrintType:
         JSR PrintCR
 .endif
 
-.if .defined(APPLE) .or .defined(OSI)
+.if .defined(APPLE1) .or .defined(APPLE2) .or .defined(SBC) .or .defined(OSI)
         JSR Imprint
 .if .defined(APPLE1) .or .defined(APPLE2) .or .defined(SBC)
         .asciiz "        BASIC ROM: "
@@ -313,6 +313,31 @@ PrintType:
         .asciiz "Slot ID Type"
         JSR PrintCR             ; And newline
 
+; Special check for language card in slot 0.
+; Algorithm:
+; - Read $C083 twice to switch the Language Card into read-write RAM mode.
+; - Write test value $AA to $D000
+; - If $AA is read back, language card is present
+; - Read $C081 twice to put card back to default mode (Read ROM, write RAM bank 2)
+
+        LDA $C083
+        LDA $C083
+        LDA #$AA
+        STA $D000
+        LDA $D000
+        CMP #$AA
+        BNE NoLC
+        LDA $C081
+        LDA $C081
+        JSR Imprint
+        .asciiz " 0   -- Language card"
+        JSR PrintCR
+        JBRA Slot1
+NoLC:
+        JSR Imprint
+        .asciiz " 0   -- Empty or unknown"
+        JSR PrintCR
+Slot1:
         LDA #1                  ; Initialize slot number
         STA SLOT
 Slots:
@@ -333,27 +358,24 @@ Slots:
         LDA (ADDR,X)
         CMP #$38                ; Should be $38 for peripheral card
         BEQ OK1
-        JMP EmptySlot
+        JMP DiskII
 OK1:
         LDA #$07                ; Want to read $Cs07
         STA ADDR                ; Low byte of address to read
-        LDX #0                  ; Read $Cs07
-        LDA (ADDR,X)
+        LDA (ADDR,X)            ; Read $Cs07
         CMP #$18                ; Should be $18 for peripheral card
         BEQ OK2
-        JMP EmptySlot
+        JMP DiskII
 OK2:
         LDA #$0B                ; Want to read $Cs0B
         STA ADDR                ; Low byte of address to read
-        LDX #0                  ; Read $Cs0B
-        LDA (ADDR,X)
+        LDA (ADDR,X)            ; Read $Cs0B
         CMP #$01                ; Should be $01 for peripheral card
         BEQ OK3
-        JMP EmptySlot
+        JMP DiskII
 OK3:
         LDA #$0C                ; Want to read $Cs0C
         STA ADDR                ; Low byte of address to read
-        LDX #0                  ; Read $Cs0C
         LDA (ADDR,X)            ; This is the card ID
         PHA                     ; Save A
         JSR PrintByte           ; Print card ID
@@ -367,56 +389,56 @@ OK3:
         CMP #$00                ; Is it class 0?
         BNE Try1                ; If not, try next class.
         JSR Imprint             ; Display class
-        .asciiz "reserved"
+        .asciiz "Reserved"
         JSR PrintCR
         JMP NextSlot
 Try1:
         CMP #$01
         BNE Try2
         JSR Imprint
-        .asciiz "printer"
+        .asciiz "Printer"
         JSR PrintCR
         JMP NextSlot
 Try2:
         CMP #$02
         BNE Try3
         JSR Imprint
-        .asciiz "joystick or mouse"
+        .asciiz "Joystick or mouse"
         JSR PrintCR
         JMP NextSlot
 Try3:
         CMP #$03
         BNE Try4
         JSR Imprint
-        .asciiz "serial or parallel"
+        .asciiz "Serial or parallel"
         JSR PrintCR
         JMP NextSlot
 Try4:
         CMP #$04
         BNE Try5
         JSR Imprint
-        .asciiz "modem"
+        .asciiz "Modem"
         JSR PrintCR
         JMP NextSlot
 Try5:
         CMP #$05
         BNE Try6
         JSR Imprint
-        .asciiz "sound or speech device"
+        .asciiz "Sound or speech device"
         JSR PrintCR
         JMP NextSlot
 Try6:
         CMP #$06
         BNE Try7
         JSR Imprint
-        .asciiz "clock"
+        .asciiz "Clock"
         JSR PrintCR
         JMP NextSlot
 Try7:
         CMP #$07
         BNE Try8
         JSR Imprint
-        .asciiz "mass storage device"
+        .asciiz "Mass storage device"
         JSR PrintCR
         JMP NextSlot
 Try8:
@@ -430,24 +452,42 @@ Try9:
         CMP #$09
         BNE Try10
         JSR Imprint
-        .asciiz "network or bus interface"
+        .asciiz "Network or bus interface"
         JSR PrintCR
-        JMP NextSlot
+        JBRA NextSlot
 Try10:
         CMP #$0A
         BNE Default
         JSR Imprint
-        .asciiz "special purpose"
+        .asciiz "Special purpose"
         JSR PrintCR
-        JMP NextSlot
+        JBRA NextSlot
 Default:
         JSR Imprint
-        .asciiz "future expansion"
+        .asciiz "Future expansion"
         JSR PrintCR
-        JMP NextSlot
+        JBRA NextSlot
+DiskII:
+; Additional check for Disk II card. $Cs00 will read $A2 and Cs01 will
+; read $20.
+        LDA #$00                ; Want to read $Cs00
+        STA ADDR                ; Low byte of address to read
+        LDX #0                  ; Read $Cs00
+        LDA (ADDR,X)
+        CMP #$A2                ; Should be $A2 for Disk II
+        BNE EmptySlot
+        LDA #$01                ; Want to read $Cs01
+        STA ADDR                ; Low byte of address to read
+        LDA (ADDR,X)            ; Read $Cs01
+        CMP #$20                ; Should be $20 for Disk II
+        BNE EmptySlot
+        JSR Imprint
+        .asciiz "-- Disk II card"
+        JSR PrintCR
+        JBRA NextSlot
 EmptySlot:
         JSR Imprint
-        .asciiz "-- empty or unknown"
+        .asciiz "-- Empty or unknown"
         JSR PrintCR
 NextSlot:
         LDA SLOT                ; Get current slot
@@ -590,9 +630,9 @@ FindTopOfRAMEnd:            ; End of critical section we don't want to write to 
 
         RTS                 ; Return
 
-; Measure CPU clock speed by sending characters out the serial port of
-; a Multi I/O board and counting how many CPU cycles it takes. Returns
-; value in A that is approximately CPU speed in MHz * 10.
+; Measure CPU clock speed by sending characters out the serial port
+; and counting how many CPU cycles it takes. Returns value in A that
+; is approximately CPU speed in MHz * 10.
 
 .if .defined(APPLE1) .or .defined(APPLE2)
 
@@ -609,11 +649,11 @@ MeasureCPUSpeed:
 
 .ifdef APPLE2
 ; 6551 Chip registers
-        TXDATA = $C098
-        RXDATA = $C098
-        STATUSREG = $C099
-        CMDREG = $C09A
-        CTLREG = $C09B
+        TXDATA = SER_BASE+8
+        RXDATA = SER_BASE+8
+        STATUSREG = SER_BASE+9
+        CMDREG = SER_BASE+10
+        CTLREG = SER_BASE+11
 .endif
 
 ; Set 1 stop bit, 8 bit data, internal clock, 19200bps
@@ -621,8 +661,8 @@ MeasureCPUSpeed:
         STA CTLREG
 
 ; Set no parity, no echo, no TX interrupts, RTS low, no RX interrupts, DTR low
-       LDA #%00001011
-       STA CMDREG
+        LDA #%00001011
+        STA CMDREG
 
         LDA #'A'  ; Character to send
         LDX #0    ; Counter
